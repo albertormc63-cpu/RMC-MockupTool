@@ -1,0 +1,455 @@
+/* =========================================================
+   Tema base
+   Estos colores controlan todo el look del Tool-MockUp.
+   ========================================================= */
+:root {
+  --bg: #1f2023;
+  --panel: #292b30;
+  --panel-2: #23252a;
+  --field: #17191d;
+  --line: #444952;
+  --line-soft: #343941;
+  --text: #f2f2ef;
+  --muted: #aeb4bf;
+  --muted-2: #7f8794;
+  --accent: #b91f35;
+  --accent-dark: #841727;
+  --ok: #38c172;
+  --danger: #c83f52;
+  --focus: #f2c94c;
+}
+
+/* =========================================================
+   Reset ligero y estructura general
+   Mantiene la app compacta para uso repetido de produccion.
+   ========================================================= */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.35 Arial, sans-serif;
+}
+
+.app-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+}
+
+/* =========================================================
+   Encabezado y estado del server
+   El punto cambia por clases .online / .offline desde app.js.
+   ========================================================= */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+h2 {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.server-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted-2);
+}
+
+.status-pill.online .status-dot {
+  background: var(--ok);
+}
+
+.status-pill.offline .status-dot {
+  background: var(--danger);
+}
+
+/* =========================================================
+   Botones generales
+   .ghost-button se usa para acciones secundarias de server.
+   ========================================================= */
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.ghost-button {
+  padding: 0 10px;
+  border: 1px solid #5a606b;
+  background: #343841;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.ghost-button:hover {
+  background: #414650;
+}
+
+.ghost-button.danger {
+  border-color: var(--accent);
+  color: #f4d6dc;
+}
+
+/* =========================================================
+   Layout principal
+   Izquierda: captura/rutas. Derecha: filtros y bitacora.
+   ========================================================= */
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 10px;
+}
+
+.main-panel,
+.side-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.main-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.side-panel {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 10px;
+}
+
+/* =========================================================
+   Selector de modo
+   Radios escondidos; el label activo pinta la opcion elegida.
+   ========================================================= */
+.mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: var(--panel-2);
+}
+
+.mode-tabs label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mode-tabs input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-tabs label.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* =========================================================
+   Campos del formulario
+   La fuente Aldrich va hidden en index.html para no ensuciar UI.
+   ========================================================= */
+.field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  gap: 8px;
+}
+
+.field,
+.check {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+.designer-field {
+  grid-column: 1 / -1;
+  max-width: 220px;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid #535966;
+  border-radius: 5px;
+  background: var(--field);
+  color: var(--text);
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--focus);
+}
+
+input[type="file"] {
+  padding: 5px 8px;
+}
+
+input[readonly] {
+  color: #d8dbe1;
+  cursor: default;
+}
+
+/* Flecha custom del dropdown. */
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 13px,
+    calc(100% - 9px) 13px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+}
+
+/* =========================================================
+   Rutas y accion principal
+   Los botones "..." solo abren el selector del sistema.
+   ========================================================= */
+.path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.browse-button {
+  border: 1px solid #5a606b;
+  background: #353a43;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.browse-button:hover {
+  background: #444a55;
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.primary-button {
+  min-width: 118px;
+  padding: 0 14px;
+  /* border: 1px solid #d13b50; */
+  background: var(--accent);
+  color: #fff;
+}
+
+.primary-button:hover {
+  background: var(--accent-dark);
+}
+
+.hint {
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+/* =========================================================
+   Filtros del Excel
+   app.js los pinta despues de analizar el archivo.
+   ========================================================= */
+.filters {
+  display: grid;
+  gap: 10px;
+}
+
+.filters[hidden] {
+  display: none;
+}
+
+.filter-block {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.filter-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 5px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: var(--field);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.check:hover {
+  border-color: #69717e;
+}
+
+.check input {
+  width: auto;
+  min-height: auto;
+  margin: 0;
+}
+
+.all-check {
+  min-height: 26px;
+  padding: 4px 7px;
+  color: var(--muted);
+}
+
+/* =========================================================
+   Bitacora
+   Muestra resumen, errores y primeros PDFs generados.
+   ========================================================= */
+.log-panel {
+  display: grid;
+  gap: 6px;
+}
+
+pre {
+  min-height: 188px;
+  max-height: 360px;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: #15171b;
+  color: #d8f5d4;
+  font: 11px/1.4 Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 820px) {
+  body {
+    padding: 10px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .primary-button {
+    width: 100%;
+  }
+}

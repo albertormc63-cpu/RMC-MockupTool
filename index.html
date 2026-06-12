@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RMC MockupTool</title>
+  <link rel="stylesheet" href="./css/styles.css">
+  <script src="./js/CSInterface.js"></script>
+  <script src="./js/app.js" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>RMC MockupTool</h1>
+        <p class="subtitle">Mockups PDF desde listas Nike On Demand</p>
+      </div>
+      <span id="cepStatus" class="status-pill">
+        <span class="status-dot"></span>
+        <span id="cepStatusText">CEP</span>
+      </span>
+    </header>
+
+    <form id="form" class="workspace">
+      <section class="main-panel">
+        <div class="mode-tabs" role="radiogroup" aria-label="Seccion">
+          <label><input type="radio" name="mode" value="bulk" checked> Por lote</label>
+          <label><input type="radio" name="mode" value="samples"> Genericas</label>
+        </div>
+
+        <div class="field-grid">
+          <label class="field field-full">Excel
+            <span class="path-row">
+              <input id="excelPath" name="excelPath" readonly placeholder="Selecciona archivo .xlsx">
+              <button class="browse-button" type="button" data-browse="file" data-target="excelPath">...</button>
+            </span>
+          </label>
+
+          <label class="field field-full">Salida
+            <span class="path-row">
+              <input id="out" name="out" value="/Volumes/Fullsize/TO PRINT/LISTAS ON DEMAND" readonly>
+              <button class="browse-button" type="button" data-browse="folder" data-target="out">...</button>
+            </span>
+          </label>
+
+          <label class="field field-full">Mockups
+            <span class="path-row">
+              <input id="mockups" name="mockups" value="/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/MOCKUPS" readonly>
+              <button class="browse-button" type="button" data-browse="folder" data-target="mockups">...</button>
+            </span>
+          </label>
+
+          <label class="field field-full">Firmas
+            <span class="path-row">
+              <input id="signaturesDir" name="signaturesDir" value="/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/FIRMAS" readonly>
+              <button class="browse-button" type="button" data-browse="folder" data-target="signaturesDir">...</button>
+            </span>
+          </label>
+
+          <label class="field field-full">Fuente Aldrich
+            <span class="path-row">
+              <input id="font" name="font" value="/Users/rmlsub1/Library/Fonts/Aldrich-Regular.ttf" readonly>
+              <button class="browse-button" type="button" data-browse="file" data-target="font">...</button>
+            </span>
+          </label>
+
+          <label class="field designer-field">Disenador
+            <select id="designer" name="designer">
+              <option value="F-ALBERTO" selected>F-ALBERTO</option>
+              <option value="F-THANIA">F-THANIA</option>
+              <option value="F-ANTONIO">F-ANTONIO</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button id="submit" class="primary-button" type="submit">Generar PDFs</button>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <section id="filters" class="filters" hidden>
+          <div class="filter-block">
+            <div class="filter-head">
+              <span>Style</span>
+              <label class="check all-check"><input id="allStyles" type="checkbox" checked> Todos</label>
+            </div>
+            <div id="styleOptions" class="filter-grid"></div>
+          </div>
+
+          <div class="filter-block">
+            <div class="filter-head">
+              <span>Tallas</span>
+              <label class="check all-check"><input id="allSizes" type="checkbox" checked> Todas</label>
+            </div>
+            <div id="sizeOptions" class="filter-grid compact"></div>
+          </div>
+        </section>
+
+        <section class="log-panel">
+          <h2>Estado</h2>
+          <pre id="log">Selecciona un Excel para revisar datos.</pre>
+        </section>
+      </aside>
+    </form>
+  </main>
+</body>
+</html>
