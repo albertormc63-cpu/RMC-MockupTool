@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const XLSX = require("xlsx");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
+const history = require("./history");
 
 let fontkit = null;
 
@@ -697,17 +698,28 @@ function buildOutputPath(outDir, order) {
 }
 
 function buildSamplesOutputPath(outDir, order) {
-  const teamPart = order.teamInfo ? `${order.line} ${order.teamInfo.team} ${order.teamInfo.nickname}` : order.line || "SIN_EQUIPO";
+  const styleFamily = getStyleFamily(order.style);
   const dateFolder = sanitizeFilePart(order.shipDate || "SIN_FECHA");
-  const fileName = [
-    order.wo || `FILA ${String(order.sourceRow).padStart(3, "0")}`,
-    order.roster || "SIN_ROSTER",
-    teamPart,
-    order.style,
-    order.qty ? `${order.qty}pz` : "1pz"
-  ].filter(Boolean).map(sanitizeFilePart).join(" - ");
+  const fileName = sanitizeFilePart(order.roster || `FILA ${String(order.sourceRow).padStart(3, "0")}`) || "SIN_ROSTER";
 
-  return path.join(outDir, dateFolder, `${fileName}.pdf`);
+  return path.join(outDir, styleFamily, dateFolder, `${fileName}.pdf`);
+}
+
+function getAvailableOutputPath(outputPath) {
+  if (!fs.existsSync(outputPath)) return outputPath;
+
+  const dir = path.dirname(outputPath);
+  const ext = path.extname(outputPath);
+  const baseName = path.basename(outputPath, ext);
+  let counter = 2;
+  let candidate = path.join(dir, `${baseName} ${counter}${ext}`);
+
+  while (fs.existsSync(candidate)) {
+    counter++;
+    candidate = path.join(dir, `${baseName} ${counter}${ext}`);
+  }
+
+  return candidate;
 }
 
 function getSectionOutputRoot(outDir, sectionName, excelName) {
@@ -761,7 +773,7 @@ async function generateMockups(options) {
       continue;
     }
 
-    const outputPath = mode === MODE_SAMPLES ? buildSamplesOutputPath(outputRoot, order) : buildOutputPath(outputRoot, order);
+    const outputPath = getAvailableOutputPath(mode === MODE_SAMPLES ? buildSamplesOutputPath(outputRoot, order) : buildOutputPath(outputRoot, order));
     const annotate = mode === MODE_SAMPLES ? annotateSamplesPdf : annotatePdf;
     await annotate({
       mockupPath,
@@ -777,13 +789,18 @@ async function generateMockups(options) {
   }
 
   console.log(`Terminado. OK: ${ok} | Faltantes: ${missing}`);
-  return {
+
+  const result = {
     ok,
     missing,
     outputs,
     missingRows,
     dateText: excel.dateText,
     mode,
+    sectionLabel: sectionName,
+    excelName,
+    excelPath: options.excel || "",
+    sheetName: excel.sheetName,
     designer,
     signaturePath,
     out: outputRoot,
@@ -793,6 +810,37 @@ async function generateMockups(options) {
     styles: uniqueSorted(rows.map(function (row) { return getStyleFamily(row.style); })),
     sizes: uniqueSorted(rows.map(function (row) { return row.size; }))
   };
+
+  try {
+    const historyResult = history.recordRun({
+      mode,
+      sectionLabel: sectionName,
+      excelName,
+      excelPath: options.excel || "",
+      sheetName: excel.sheetName,
+      outputRoot,
+      requestedOutputDir: options.out,
+      mockupsDir: options.mockups,
+      designer,
+      totalRows: excel.rows.length,
+      selectedRows: filteredRows.length,
+      consolidatedRows: rows.length,
+      pdfsGenerated: ok,
+      missingMockups: missing,
+      styles: result.styles,
+      sizes: result.sizes,
+      outputs,
+      missingRows,
+      status: "completed"
+    });
+    result.historyDb = historyResult.dbPath;
+    result.historyLog = historyResult.logPath;
+  } catch (error) {
+    result.historyWarning = error.message;
+    console.warn(`Historial no registrado: ${error.message}`);
+  }
+
+  return result;
 }
 
 function consolidateSampleRows(rows) {
@@ -903,6 +951,7 @@ module.exports = {
   buildOutputPath,
   buildSamplesOutputPath,
   generateMockups,
+  history,
   readExcel,
   readExcelBuffer,
   summarizeExcel

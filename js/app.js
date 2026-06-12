@@ -304,6 +304,9 @@
         getSelectedMode() === "samples" ? "" : "Tallas procesadas: " + (result.sizes || []).join(", "),
         "Disenador: " + (result.designer || ""),
         "Salida: " + runtime.path.resolve(document.getElementById("out").value),
+        result.historyDb ? "Registro BD: " + result.historyDb : "",
+        result.historyLog ? "Log JSON: " + result.historyLog : "",
+        result.historyWarning ? "Aviso historial: " + result.historyWarning : "",
         "",
         "Primeros archivos:",
         ...(result.outputs || []).slice(0, 20)

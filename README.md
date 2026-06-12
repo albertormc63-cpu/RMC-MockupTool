@@ -64,6 +64,47 @@ package.json           Dependencias Node
 npm run check
 ```
 
+## Historial y Logs
+
+El panel registra cada corrida terminada en una base SQLite central para que otros CEPs puedan convivir en la misma BD con sus propias tablas.
+
+BD central:
+
+```text
+/Users/rmlsub1/Documents/RMC - CEP/RMC_BD/RMC_CEP.sqlite
+```
+
+Tabla de este CEP:
+
+```text
+rmc_mockuptool_runs
+```
+
+Tambien se mantiene un registro de apps/tablas disponibles:
+
+```text
+cep_registry
+```
+
+Logs JSON por corrida:
+
+```text
+/Users/rmlsub1/Documents/RMC - CEP/RMC MockupTool portafolio interno/06_Logs
+```
+
+Campos principales guardados por corrida:
+
+- Fecha en formato `DD/MM/AAAA`.
+- Hora en formato `HH:MM:SS`.
+- Seccion: `Por lote` o `Genericas Muestras`.
+- Excel y disenador.
+- Filas Excel, filas seleccionadas, grupos consolidados, PDFs generados y mockups faltantes.
+- Styles y tallas como texto legible.
+
+La tabla `rmc_mockuptool_runs` es intencionalmente corta para consulta diaria. Los detalles tecnicos de respaldo se guardan en logs JSON dentro de `06_Logs`, no como columnas de la tabla.
+
+Para revisar o borrar pruebas manualmente, usar DB Browser for SQLite o SQLiteStudio y abrir `RMC_BD/RMC_CEP.sqlite`.
+
 ## Notas
 
 - No mezclar este repo con `RMCOp-Nike`.
