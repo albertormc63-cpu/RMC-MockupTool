@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const childProcess = require("child_process");
 const XLSX = require("xlsx");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const history = require("./history");
@@ -20,9 +21,12 @@ const DATE_COLOR = rgb(0xa9 / 255, 0x1e / 255, 0x2f / 255);
 
 const DEFAULT_EXCEL = "/Volumes/Fullsize/TO PRINT/LISTAS ON DEMAND/NIKE OD 12 JUNIO.xlsx";
 const DEFAULT_MOCKUPS = "/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/MOCKUPS";
-const DEFAULT_OUT = "/Volumes/Fullsize/TO PRINT/LISTAS ON DEMAND";
+const DEFAULT_OUT = "/Volumes/Fullsize/TO PRINT/NIKE ORDERS/LISTAS ON DEMAND";
 const DEFAULT_ALDRICH_FONT = "/Users/rmlsub1/Library/Fonts/Aldrich-Regular.ttf";
 const DEFAULT_SIGNATURES_DIR = "/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/FIRMAS";
+const DEFAULT_PRINT_OPTIONS = ["fit-to-page", "landscape"];
+const PRINT_ORDER_EXCEL = "excel";
+const PRINT_ORDER_STACK = "stack";
 const MODE_BULK = "bulk";
 const MODE_SAMPLES = "samples";
 const DESIGNERS = ["F-ALBERTO", "F-THANIA", "F-ANTONIO"];
@@ -732,12 +736,7 @@ function getStyleFamily(style) {
   return match ? match[0] : "SIN_STYLE";
 }
 
-async function generateMockups(options) {
-  // Flujo principal:
-  // 1. Leer Excel segun modo.
-  // 2. Filtrar/consolidar filas.
-  // 3. Resolver mockup y firma.
-  // 4. Anotar cada PDF y guardarlo en la estructura final.
+function buildSelectedJob(options) {
   const mode = normalizeMode(options.mode);
   const excelName = options.excelName || options.excel || "Excel";
   const excel = options.excelBuffer ? readExcelBuffer(options.excelBuffer, mode) : readExcel(options.excel, mode);
@@ -746,6 +745,32 @@ async function generateMockups(options) {
   const rows = options.limit > 0 ? consolidatedRows.slice(0, options.limit) : consolidatedRows;
   const sectionName = mode === MODE_SAMPLES ? "Genericas Muestras" : "Por lote";
   const outputRoot = getSectionOutputRoot(options.out, sectionName, excelName);
+
+  return {
+    mode,
+    excelName,
+    excel,
+    filteredRows,
+    rows,
+    sectionName,
+    outputRoot
+  };
+}
+
+async function generateMockups(options) {
+  // Flujo principal:
+  // 1. Leer Excel segun modo.
+  // 2. Filtrar/consolidar filas.
+  // 3. Resolver mockup y firma.
+  // 4. Anotar cada PDF y guardarlo en la estructura final.
+  const job = buildSelectedJob(options);
+  const mode = job.mode;
+  const excelName = job.excelName;
+  const excel = job.excel;
+  const filteredRows = job.filteredRows;
+  const rows = job.rows;
+  const sectionName = job.sectionName;
+  const outputRoot = job.outputRoot;
   const designer = normalizeDesigner(options.designer);
   const signaturePath = resolveSignaturePath(designer, options.signaturesDir);
   let ok = 0;
@@ -926,6 +951,252 @@ function filterRows(rows, options) {
   });
 }
 
+function preparePrintQueue(options) {
+  const job = buildSelectedJob(options);
+  const pdfIndex = indexOutputPdfFiles(job.outputRoot);
+  const items = [];
+  const missingRows = [];
+  const duplicateRows = [];
+  const printOrder = normalizePrintOrder(options.printOrder);
+  const printOptions = getPrintOptions(options);
+
+  job.rows.forEach(function (order, index) {
+    const expectedPath = job.mode === MODE_SAMPLES ? buildSamplesOutputPath(job.outputRoot, order) : buildOutputPath(job.outputRoot, order);
+    const candidates = findPrintCandidates(pdfIndex, job.outputRoot, job.mode, order);
+    const exactExists = fs.existsSync(expectedPath);
+    const chosenPath = exactExists ? expectedPath : chooseBestPrintCandidate(candidates);
+
+    if (candidates.length > 1) {
+      duplicateRows.push({
+        sourceRow: order.sourceRow,
+        sourceRows: order.sourceRows || [order.sourceRow],
+        key: getPrintKeys(order, job.mode).join(" / "),
+        style: order.style,
+        size: order.size,
+        chosenPath,
+        candidates
+      });
+    }
+
+    if (!chosenPath) {
+      missingRows.push({
+        sourceRow: order.sourceRow,
+        sourceRows: order.sourceRows || [order.sourceRow],
+        key: getPrintKeys(order, job.mode).join(" / "),
+        style: order.style,
+        size: order.size,
+        expectedPath,
+        candidates
+      });
+      return;
+    }
+
+    items.push({
+      order: 0,
+      excelOrder: index + 1,
+      sourceRow: order.sourceRow,
+      sourceRows: order.sourceRows || [order.sourceRow],
+      key: getPrintKeys(order, job.mode).join(" / "),
+      style: order.style,
+      size: order.size,
+      qty: order.qty,
+      path: chosenPath,
+      match: exactExists ? "exacto" : "por nombre"
+    });
+  });
+
+  const orderedItems = printOrder === PRINT_ORDER_EXCEL ? items : items.slice().reverse();
+  orderedItems.forEach(function (item, index) {
+    item.order = index + 1;
+  });
+
+  return {
+    mode: job.mode,
+    sectionLabel: job.sectionName,
+    excelName: job.excelName,
+    excelPath: options.excel || "",
+    sheetName: job.excel.sheetName,
+    out: job.outputRoot,
+    totalRows: job.excel.rows.length,
+    selectedRows: job.filteredRows.length,
+    rows: job.rows.length,
+    printOrder,
+    printOrderLabel: getPrintOrderLabel(printOrder),
+    printOptions,
+    printable: orderedItems.length,
+    missing: missingRows.length,
+    duplicates: duplicateRows.length,
+    items: orderedItems,
+    missingRows,
+    duplicateRows,
+    styles: uniqueSorted(job.rows.map(function (row) { return getStyleFamily(row.style); })),
+    sizes: uniqueSorted(job.rows.map(function (row) { return row.size; }))
+  };
+}
+
+function submitPrintQueue(options) {
+  const queue = preparePrintQueue(options);
+  const printer = clean(options.printer);
+  const printOptions = queue.printOptions;
+  const printed = [];
+  const failed = [];
+
+  if (queue.items.length === 0) {
+    throw new Error("No hay PDFs encontrados para mandar a imprimir.");
+  }
+
+  queue.items.forEach(function (item) {
+    const args = buildLpArgs(printer, printOptions, item.path);
+    const result = childProcess.spawnSync("lp", args, { encoding: "utf8" });
+
+    if (result.status === 0) {
+      printed.push({
+        path: item.path,
+        stdout: clean(result.stdout)
+      });
+      return;
+    }
+
+    failed.push({
+      path: item.path,
+      status: result.status,
+      error: clean(result.stderr || result.error && result.error.message || result.stdout)
+    });
+  });
+
+  return Object.assign({}, queue, {
+    submitted: printed.length,
+    failed: failed.length,
+    printer: printer || "default",
+    printOptions,
+    printed,
+    failedRows: failed
+  });
+}
+
+function normalizePrintOrder(value) {
+  const order = cleanUpper(value);
+  return order === "EXCEL" || order === "TOP-DOWN" ? PRINT_ORDER_EXCEL : PRINT_ORDER_STACK;
+}
+
+function getPrintOrderLabel(printOrder) {
+  return printOrder === PRINT_ORDER_EXCEL ? "Excel de arriba hacia abajo" : "Pila: de abajo hacia arriba";
+}
+
+function getPrintOptions(options) {
+  if (Array.isArray(options.printOptions)) {
+    return options.printOptions.map(clean).filter(Boolean);
+  }
+
+  return DEFAULT_PRINT_OPTIONS.slice();
+}
+
+function buildLpArgs(printer, printOptions, filePath) {
+  const args = [];
+
+  if (printer) {
+    args.push("-d", printer);
+  }
+
+  printOptions.forEach(function (option) {
+    args.push("-o", option);
+  });
+
+  args.push(filePath);
+  return args;
+}
+
+function indexOutputPdfFiles(outputRoot) {
+  const files = [];
+  const index = new Map();
+
+  if (fs.existsSync(outputRoot)) {
+    collectPdfFiles(outputRoot, files);
+  }
+
+  files.forEach(function (filePath) {
+    getFilePrintKeys(filePath).forEach(function (key) {
+      if (!key) return;
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(filePath);
+    });
+  });
+
+  return {
+    files,
+    index
+  };
+}
+
+function collectPdfFiles(dir, files) {
+  fs.readdirSync(dir).forEach(function (fileName) {
+    const filePath = path.join(dir, fileName);
+    const stat = fs.statSync(filePath);
+
+    if (stat.isDirectory()) {
+      collectPdfFiles(filePath, files);
+      return;
+    }
+
+    if (path.extname(fileName).toLowerCase() === ".pdf") {
+      files.push(filePath);
+    }
+  });
+}
+
+function getFilePrintKeys(filePath) {
+  const baseName = path.basename(filePath, path.extname(filePath));
+  const keys = [cleanUpper(baseName), cleanUpper(baseName.split(" - ")[0])];
+  return Array.from(new Set(keys.filter(Boolean)));
+}
+
+function getPrintKeys(order, mode) {
+  if (mode === MODE_SAMPLES) {
+    return [order.roster, order.wo].map(cleanUpper).filter(Boolean);
+  }
+
+  return [order.wo].map(cleanUpper).filter(Boolean);
+}
+
+function findPrintCandidates(pdfIndex, outputRoot, mode, order) {
+  const styleFamily = getStyleFamily(order.style);
+  const candidates = [];
+
+  getPrintKeys(order, mode).forEach(function (key) {
+    (pdfIndex.index.get(key) || []).forEach(function (filePath) {
+      if (candidates.indexOf(filePath) !== -1) return;
+      if (!matchesPrintFolder(outputRoot, filePath, mode, styleFamily, order.size)) return;
+      candidates.push(filePath);
+    });
+  });
+
+  return candidates.sort(comparePrintCandidates);
+}
+
+function matchesPrintFolder(outputRoot, filePath, mode, styleFamily, size) {
+  const relativeParts = path.relative(outputRoot, filePath).split(path.sep);
+
+  if (relativeParts[0] !== styleFamily) return false;
+  if (mode === MODE_SAMPLES || !size) return true;
+
+  const sizeFolder = cleanUpper(relativeParts[1]);
+  return sizeFolder.split("-").indexOf(cleanUpper(size)) !== -1;
+}
+
+function chooseBestPrintCandidate(candidates) {
+  return candidates.length ? candidates[0] : "";
+}
+
+function comparePrintCandidates(left, right) {
+  const leftBase = path.basename(left, path.extname(left));
+  const rightBase = path.basename(right, path.extname(right));
+  const leftCopy = / \d+$/.test(leftBase);
+  const rightCopy = / \d+$/.test(rightBase);
+
+  if (leftCopy !== rightCopy) return leftCopy ? 1 : -1;
+  return left.localeCompare(right, "en");
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   await generateMockups(args);
@@ -944,13 +1215,18 @@ module.exports = {
   DEFAULT_OUT,
   DEFAULT_ALDRICH_FONT,
   DEFAULT_SIGNATURES_DIR,
+  DEFAULT_PRINT_OPTIONS,
   DESIGNERS,
+  PRINT_ORDER_EXCEL,
+  PRINT_ORDER_STACK,
   MODE_BULK,
   MODE_SAMPLES,
   buildMockupPath,
   buildOutputPath,
   buildSamplesOutputPath,
   generateMockups,
+  preparePrintQueue,
+  submitPrintQueue,
   history,
   readExcel,
   readExcelBuffer,

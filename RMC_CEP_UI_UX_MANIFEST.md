@@ -1,6 +1,6 @@
 # RMC CEP UI/UX Manifest
 
-Ultima actualizacion: 2026-06-12.
+Ultima actualizacion: 2026-06-15.
 
 Este archivo define la estetica, estructura, reglas de interfaz y metricas visuales para paneles CEP de RMC.
 
@@ -20,6 +20,7 @@ La prioridad es que el operador pueda:
 - Seleccionar rapido.
 - Revisar rutas y datos sin perderse.
 - Detectar errores antes de procesar.
+- Detectar PDFs existentes, faltantes y duplicados antes de regenerar lotes.
 - Procesar lotes sin romper el flujo manual.
 - Leer logs y estados dentro del panel.
 
@@ -159,6 +160,8 @@ footer credito
 - Timer con fuente monospace.
 - Detalles largos en bloque con scroll.
 - Filtros por style y talla como cards compactas.
+- Para lotes con PDFs ya generados, mostrar conteos de existentes, faltantes, duplicados y omitidos.
+- La accion segura debe permitir generar solo faltantes cuando el Excel fue actualizado despues del lote inicial.
 
 ### Logs
 
@@ -195,6 +198,7 @@ Evitar:
 - Rutas largas deben usar monospace y permitir wrap.
 - Los errores no deben tumbar el panel completo; deben aparecer en log.
 - Las acciones destructivas o de sobreescritura deben pedir confirmacion.
+- Las acciones que pueden duplicar PDFs o registros de BD deben mostrar validacion previa.
 - Los flujos manual y batch deben mantenerse separados.
 - Los estados de batch deben incluir conteo de OK, errores y tiempo.
 - No hardcodear rutas nuevas en archivos de coordinacion UI como `js/app.js`; usar configuracion o helpers.
@@ -205,6 +209,25 @@ El flujo manual existe para pedidos individuales y pruebas controladas.
 El flujo batch existe para produccion desde Excel.
 
 No mezclar comportamiento entre ambos sin una razon clara.
+
+## Validacion De Lotes Existentes
+
+Para `RMC MockupTool`, el flujo batch debe considerar que el Excel `Por lote` puede cambiar despues de que ya se generaron PDFs. La UI debe soportar una revision previa antes de generar:
+
+- `Esperados`: grupos consolidados segun Excel, filtros por style/talla y modo activo.
+- `Existentes`: PDFs exactos ya presentes en la carpeta de salida.
+- `Faltantes`: PDFs esperados que todavia no existen y deben generarse.
+- `Duplicados`: candidatos multiples para la misma clave, por ejemplo copias con sufijo ` 2`.
+- `Omitidos`: archivos que no se regeneran porque ya existen.
+
+Reglas de interfaz:
+
+- Mostrar estos conteos en el panel de revision o log antes de generar.
+- El operador debe poder entender si se hara una generacion completa o parcial.
+- Cuando existan PDFs previos, el comportamiento seguro recomendado es `solo faltantes`.
+- Si se permite regenerar todo, pedir confirmacion clara porque puede crear duplicados y ensuciar el historial.
+- Mantener los filtros por style/talla como fuente del alcance de la validacion.
+- En impresion, mostrar el orden real de envio a cola y mantener el orden invertido cuando se busque que la pila fisica quede como el Excel.
 
 ## Variantes RMCOp-Nike
 
@@ -227,6 +250,7 @@ Estas metricas convierten el manifiesto en una revision objetiva antes de cerrar
 | Logs | El estado debe quedar dentro del panel. | Scroll interno, monospace, sin romper layout. |
 | Rutas | Rutas largas deben seguir siendo legibles. | Wrap o scroll horizontal controlado; sin overflow de pagina. |
 | Batch | El operador debe ver resultado y alcance. | OK, errores/faltantes, seleccionados y salida visibles. |
+| Validacion | El operador debe ver existentes/faltantes antes de regenerar. | Conteos y primeros casos visibles. |
 | Manual/Batch | Los flujos no deben mezclarse accidentalmente. | Tabs, pasos o secciones separadas. |
 | Cards | No crear decoracion innecesaria. | 0 cards anidadas; cards solo para grupos accionables. |
 | Texto UI | El copy debe ser operacional. | Sin marketing, sin parrafos explicativos largos. |

@@ -6,18 +6,30 @@
   const sizeOptions = document.getElementById("sizeOptions");
   const allStyles = document.getElementById("allStyles");
   const allSizes = document.getElementById("allSizes");
-  const log = document.getElementById("log");
+  const terminal = document.getElementById("terminal");
+  const btnClearLog = document.getElementById("btnClearLog");
   const button = document.getElementById("submit");
+  const previewPrintButton = document.getElementById("previewPrint");
+  const printQueueButton = document.getElementById("printQueue");
   const modeInputs = Array.from(document.querySelectorAll('input[name="mode"]'));
   const cepStatus = document.getElementById("cepStatus");
   const cepStatusText = document.getElementById("cepStatusText");
+  const resetUiButton = document.getElementById("resetUi");
+  const summaryMode = document.getElementById("summaryMode");
+  const summaryRows = document.getElementById("summaryRows");
+  const summaryStyles = document.getElementById("summaryStyles");
+  const summarySizes = document.getElementById("summarySizes");
+  const maxLogLines = 180;
 
   const runtime = createRuntime();
   let excelSummary = null;
 
+  installConsoleLog();
+  setLog("Selecciona un Excel para revisar datos.", "log-success");
   setCepStatus();
   bindEvents();
   syncModeTabs();
+  updateSummary();
 
   function createRuntime() {
     if (typeof require !== "function") {
@@ -52,9 +64,11 @@
     cepStatus.classList.toggle("offline", !runtime.ready);
     cepStatusText.textContent = runtime.ready ? "CEP listo" : "Sin Node";
     button.disabled = !runtime.ready;
+    previewPrintButton.disabled = !runtime.ready;
+    printQueueButton.disabled = !runtime.ready;
 
     if (!runtime.ready) {
-      log.textContent = "ERROR DE CEP:\n" + runtime.error;
+      setLog("ERROR DE CEP:\n" + runtime.error, "log-error");
     }
   }
 
@@ -66,6 +80,7 @@
       input.addEventListener("change", () => {
         syncModeTabs();
         resetExcelState();
+        updateSummary();
         if (excelPathInput.value) analyzeExcel();
       });
     });
@@ -78,6 +93,12 @@
     });
 
     sizeOptions.addEventListener("change", () => syncAllCheckbox("size", allSizes));
+    resetUiButton.addEventListener("click", resetUi);
+    previewPrintButton.addEventListener("click", previewPrintQueue);
+    printQueueButton.addEventListener("click", printSelectedQueue);
+    btnClearLog.addEventListener("click", () => {
+      terminal.innerHTML = "";
+    });
 
     document.querySelectorAll("[data-browse]").forEach((browseButton) => {
       browseButton.addEventListener("click", () => browsePath(browseButton));
@@ -98,6 +119,7 @@
     if (!selectedPath) return;
 
     target.value = selectedPath;
+    updateSummary();
 
     if (target.id === "excelPath") {
       analyzeExcel();
@@ -159,7 +181,8 @@
 
     if (!runtime.ready || !excelPathInput.value) return;
 
-    log.textContent = "Leyendo Excel...";
+    setLog("Leyendo Excel...", "log-success");
+    updateSummary({ rows: "..." });
 
     try {
       const excel = runtime.generate.readExcel(excelPathInput.value, getSelectedMode());
@@ -170,8 +193,9 @@
       refreshSizeOptions();
       updateFilters();
       filters.hidden = false;
+      updateSummary();
 
-      log.textContent = [
+      setLog([
         "Excel listo.",
         "Seccion: " + getModeLabel(),
         "Filas detectadas: " + excelSummary.rows,
@@ -179,21 +203,24 @@
         getSelectedMode() === "samples"
           ? "Equipos: " + (excelSummary.teams || []).join(", ")
           : "Tallas: " + (excelSummary.sizes || []).join(", ")
-      ].join("\n");
+      ].join("\n"), "log-success");
     } catch (error) {
-      log.textContent = "ERROR AL LEER EXCEL:\n" + error.message;
+      setLog("ERROR AL LEER EXCEL:\n" + error.message, "log-error");
+      updateSummary({ rows: "0" });
     }
   }
 
   function resetExcelState() {
     excelSummary = null;
     resetFilterUi();
+    updateSummary();
   }
 
   function resetFilterUi() {
     filters.hidden = true;
     styleOptions.innerHTML = "";
     sizeOptions.innerHTML = "";
+    syncCheckVisuals();
   }
 
   function renderOptions(container, group, values) {
@@ -203,6 +230,7 @@
       '<span>' + escapeHtmlText(value) + '</span>',
       '</label>'
     ].join("")).join("");
+    syncCheckVisuals();
   }
 
   function toggleGroup(group, checked) {
@@ -215,20 +243,25 @@
       refreshSizeOptions();
     }
 
+    syncCheckVisuals();
     updateFilters();
   }
 
   function syncAllCheckbox(group, allCheckbox) {
     const inputs = Array.from(document.querySelectorAll('[data-group="' + group + '"]'));
     allCheckbox.checked = inputs.length > 0 && inputs.every((input) => input.checked);
+    syncCheckVisuals();
     updateFilters();
   }
 
   function updateFilters() {
-    return {
+    const selectedFilters = {
       styles: allStyles.checked ? [] : collectChecked("style"),
       sizes: getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size")
     };
+
+    updateSummary({ filters: selectedFilters });
+    return selectedFilters;
   }
 
   function refreshSizeOptions() {
@@ -258,6 +291,24 @@
     toggleGroup("size", allSizes.checked);
   }
 
+  function resetUi() {
+    excelPathInput.value = "";
+    excelSummary = null;
+    resetFilterUi();
+    allStyles.checked = true;
+    allSizes.checked = true;
+    syncCheckVisuals();
+    setLog("Selecciona un Excel para revisar datos.", "log-success");
+    updateSummary({ rows: "0" });
+  }
+
+  function syncCheckVisuals() {
+    document.querySelectorAll(".check").forEach((label) => {
+      const input = label.querySelector("input");
+      label.classList.toggle("is-checked", !!input && input.checked);
+    });
+  }
+
   function uniqueValues(values) {
     return Array.from(new Set(values.filter(Boolean))).sort();
   }
@@ -271,28 +322,17 @@
 
     if (!runtime.ready) return;
 
-    button.disabled = true;
-    log.textContent = "Procesando...";
+    setBusy(true);
+    setLog("Procesando...", "log-success");
+    updateSummary();
 
     try {
       const selectedFilters = updateFilters();
       validateSelection(selectedFilters);
 
-      const result = await runtime.generate.generateMockups({
-        excel: excelPathInput.value,
-        excelName: runtime.path.basename(excelPathInput.value),
-        mode: getSelectedMode(),
-        mockups: document.getElementById("mockups").value,
-        out: document.getElementById("out").value,
-        font: document.getElementById("font").value,
-        designer: document.getElementById("designer").value,
-        signaturesDir: document.getElementById("signaturesDir").value,
-        styles: selectedFilters.styles,
-        sizes: selectedFilters.sizes,
-        limit: 0
-      });
+      const result = await runtime.generate.generateMockups(getJobOptions(selectedFilters));
 
-      log.textContent = [
+      setLog([
         "Terminado.",
         "Seccion: " + getModeLabel(),
         "Filas Excel: " + result.totalRows,
@@ -310,12 +350,173 @@
         "",
         "Primeros archivos:",
         ...(result.outputs || []).slice(0, 20)
-      ].filter(Boolean).join("\n");
+      ].filter(Boolean).join("\n"), "log-success");
+      updateSummary({
+        rows: result.selectedRows || result.rows || 0,
+        filters: selectedFilters
+      });
     } catch (error) {
-      log.textContent = "ERROR:\n" + error.message;
+      setLog("ERROR:\n" + error.message, "log-error");
+      updateSummary();
     } finally {
-      button.disabled = !runtime.ready;
+      setBusy(false);
     }
+  }
+
+  function previewPrintQueue() {
+    if (!runtime.ready) return;
+
+    setBusy(true);
+    setLog("Armando cola de impresion...", "log-success");
+
+    try {
+      const selectedFilters = updateFilters();
+      validateSelection(selectedFilters);
+
+      const result = runtime.generate.preparePrintQueue(getJobOptions(selectedFilters));
+      setLog(formatPrintQueueLog(result, "Cola de impresion lista."), result.missing || result.duplicates ? "log-warning" : "log-success");
+      updateSummary({
+        rows: result.printable || 0,
+        filters: selectedFilters
+      });
+    } catch (error) {
+      setLog("ERROR AL ARMAR COLA:\n" + error.message, "log-error");
+      updateSummary();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function printSelectedQueue() {
+    if (!runtime.ready) return;
+
+    setBusy(true);
+
+    try {
+      const selectedFilters = updateFilters();
+      validateSelection(selectedFilters);
+
+      const options = getJobOptions(selectedFilters);
+      const preview = runtime.generate.preparePrintQueue(options);
+
+      if (!preview.printable) {
+        throw new Error("No hay PDFs encontrados para imprimir.");
+      }
+
+      const warnings = [
+        preview.missing ? "Faltantes: " + preview.missing : "",
+        preview.duplicates ? "Duplicados detectados: " + preview.duplicates : ""
+      ].filter(Boolean).join("\n");
+
+      const message = [
+        "Mandar " + preview.printable + " PDFs a la impresora predeterminada?",
+        warnings,
+        "Se mandaran de abajo hacia arriba para que la pila quede como el Excel.",
+        "Opciones: horizontal y ajustar a pagina."
+      ].filter(Boolean).join("\n\n");
+
+      if (!window.confirm(message)) return;
+
+      setLog("Mandando PDFs a la cola de impresion...", "log-success");
+      const result = runtime.generate.submitPrintQueue(options);
+      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates ? "log-warning" : "log-success";
+      setLog(formatPrintQueueLog(result, "Cola enviada a impresion."), statusClass);
+      updateSummary({
+        rows: result.submitted || 0,
+        filters: selectedFilters
+      });
+    } catch (error) {
+      setLog("ERROR AL IMPRIMIR:\n" + error.message, "log-error");
+      updateSummary();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function getJobOptions(selectedFilters) {
+    return {
+      excel: excelPathInput.value,
+      excelName: runtime.path.basename(excelPathInput.value),
+      mode: getSelectedMode(),
+      mockups: document.getElementById("mockups").value,
+      out: document.getElementById("out").value,
+      font: document.getElementById("font").value,
+      designer: document.getElementById("designer").value,
+      signaturesDir: document.getElementById("signaturesDir").value,
+      styles: selectedFilters.styles,
+      sizes: selectedFilters.sizes,
+      printOrder: "stack",
+      limit: 0
+    };
+  }
+
+  function formatPrintQueueLog(result, title) {
+    return [
+      title,
+      "Seccion: " + getModeLabel(),
+      "Filas Excel: " + result.totalRows,
+      "Filas seleccionadas: " + result.selectedRows,
+      "Grupos en orden: " + result.rows,
+      "Orden impresion: " + (result.printOrderLabel || ""),
+      "PDFs en cola: " + result.printable,
+      result.submitted != null ? "Mandados a cola: " + result.submitted : "",
+      result.failed ? "Errores de impresion: " + result.failed : "",
+      result.printOptions ? "Opciones lp: " + result.printOptions.join(", ") : "",
+      "Faltantes: " + result.missing,
+      "Duplicados detectados: " + result.duplicates,
+      "Styles: " + (result.styles || []).join(", "),
+      getSelectedMode() === "samples" ? "" : "Tallas: " + (result.sizes || []).join(", "),
+      "Salida: " + result.out,
+      "",
+      "Primeros en cola:",
+      ...(result.items || []).slice(0, 20).map(formatPrintItem),
+      result.missingRows && result.missingRows.length ? "" : "",
+      result.missingRows && result.missingRows.length ? "Primeros faltantes:" : "",
+      ...(result.missingRows || []).slice(0, 10).map(formatMissingPrintItem),
+      result.duplicateRows && result.duplicateRows.length ? "" : "",
+      result.duplicateRows && result.duplicateRows.length ? "Duplicados detectados:" : "",
+      ...(result.duplicateRows || []).slice(0, 10).map(formatDuplicatePrintItem),
+      result.failedRows && result.failedRows.length ? "" : "",
+      result.failedRows && result.failedRows.length ? "Errores:" : "",
+      ...(result.failedRows || []).slice(0, 10).map((row) => row.path + " | " + row.error)
+    ].filter(Boolean).join("\n");
+  }
+
+  function formatPrintItem(item) {
+    return [
+      String(item.order).padStart(3, "0"),
+      "Excel " + String(item.excelOrder).padStart(3, "0"),
+      item.key || "SIN CLAVE",
+      item.style || "SIN STYLE",
+      item.size || "SIN TALLA",
+      item.match,
+      item.path
+    ].join(" | ");
+  }
+
+  function formatMissingPrintItem(row) {
+    return [
+      "Fila " + row.sourceRow,
+      row.key || "SIN CLAVE",
+      row.style || "SIN STYLE",
+      row.size || "SIN TALLA",
+      row.expectedPath
+    ].join(" | ");
+  }
+
+  function formatDuplicatePrintItem(row) {
+    return [
+      "Fila " + row.sourceRow,
+      row.key || "SIN CLAVE",
+      "usa: " + row.chosenPath,
+      "candidatos: " + row.candidates.length
+    ].join(" | ");
+  }
+
+  function setBusy(isBusy) {
+    button.disabled = isBusy || !runtime.ready;
+    previewPrintButton.disabled = isBusy || !runtime.ready;
+    printQueueButton.disabled = isBusy || !runtime.ready;
   }
 
   function validateSelection(selectedFilters) {
@@ -337,6 +538,7 @@
       const label = input.closest("label");
       if (label) label.classList.toggle("is-active", input.checked);
     });
+    updateSummary();
   }
 
   function getSelectedMode() {
@@ -346,6 +548,82 @@
 
   function getModeLabel() {
     return getSelectedMode() === "samples" ? "Genericas" : "Por lote";
+  }
+
+  function updateSummary(overrides) {
+    const values = overrides || {};
+    const filtersValue = values.filters || {
+      styles: allStyles.checked ? [] : collectChecked("style"),
+      sizes: getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size")
+    };
+    const rowValue = values.rows != null
+      ? values.rows
+      : excelSummary
+        ? excelSummary.rows
+        : 0;
+
+    summaryMode.textContent = getModeLabel();
+    summaryRows.textContent = String(rowValue);
+    summaryStyles.textContent = allStyles.checked ? "Todos" : getCountLabel(filtersValue.styles, "style");
+    summarySizes.textContent = getSelectedMode() === "samples" ? "No aplica" : allSizes.checked ? "Todas" : getCountLabel(filtersValue.sizes, "talla");
+  }
+
+  function getCountLabel(values, singular) {
+    const count = values ? values.length : 0;
+    if (count === 0) return "Pendiente";
+    if (count === 1) return values[0];
+    return count + " " + singular + "s";
+  }
+
+  function installConsoleLog() {
+    if (!terminal) return;
+
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    console.log = function () {
+      const message = Array.prototype.join.call(arguments, " ");
+      writeLog(message, "log-success");
+      originalLog.apply(console, arguments);
+    };
+
+    console.error = function () {
+      const message = Array.prototype.join.call(arguments, " ");
+      writeLog(message, "log-error");
+      originalError.apply(console, arguments);
+    };
+
+    console.warn = function () {
+      const message = Array.prototype.join.call(arguments, " ");
+      writeLog(message, "log-warning");
+      originalWarn.apply(console, arguments);
+    };
+  }
+
+  function setLog(message, className) {
+    if (!terminal) return;
+    terminal.innerHTML = "";
+    writeLog(message, className);
+  }
+
+  function writeLog(message, className) {
+    if (!terminal) return;
+
+    const line = document.createElement("div");
+    line.textContent = message;
+
+    if (className) {
+      line.className = className;
+    }
+
+    terminal.appendChild(line);
+
+    while (terminal.childNodes.length > maxLogLines) {
+      terminal.removeChild(terminal.firstChild);
+    }
+
+    terminal.scrollTop = terminal.scrollHeight;
   }
 
   function escapeAttr(value) {

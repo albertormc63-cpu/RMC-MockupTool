@@ -11,14 +11,20 @@
 <body>
   <main class="app-shell">
     <header class="topbar">
-      <div>
-        <h1>RMC MockupTool</h1>
-        <p class="subtitle">Mockups PDF desde listas Nike On Demand</p>
+      <div class="header-logo-slot">
+        <img src="./assets/logo rmc m.svg" alt="RMC" class="header-logo header-logo-rmc">
       </div>
-      <span id="cepStatus" class="status-pill">
-        <span class="status-dot"></span>
-        <span id="cepStatusText">CEP</span>
-      </span>
+      <!-- <div class="header-title"> -->
+        <!-- <h1>RMC MockupTool</h1> -->
+        <!-- <p class="subtitle">Mockups PDF desde listas Nike On Demand</p> -->
+      <!-- </div> -->
+      <div class="topbar-actions">
+        <button id="resetUi" class="reset-button" type="button" title="Limpiar Excel y filtros" aria-label="Limpiar Excel y filtros">↻</button>
+        <span id="cepStatus" class="status-pill">
+          <span class="status-dot"></span>
+          <span id="cepStatusText">CEP</span>
+        </span>
+      </div>
     </header>
 
     <form id="form" class="workspace">
@@ -38,31 +44,14 @@
 
           <label class="field field-full">Salida
             <span class="path-row">
-              <input id="out" name="out" value="/Volumes/Fullsize/TO PRINT/LISTAS ON DEMAND" readonly>
+              <input id="out" name="out" value="/Volumes/Fullsize/TO PRINT/NIKE ORDERS/LISTAS ON DEMAND" readonly>
               <button class="browse-button" type="button" data-browse="folder" data-target="out">...</button>
             </span>
           </label>
 
-          <label class="field field-full">Mockups
-            <span class="path-row">
-              <input id="mockups" name="mockups" value="/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/MOCKUPS" readonly>
-              <button class="browse-button" type="button" data-browse="folder" data-target="mockups">...</button>
-            </span>
-          </label>
-
-          <label class="field field-full">Firmas
-            <span class="path-row">
-              <input id="signaturesDir" name="signaturesDir" value="/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/FIRMAS" readonly>
-              <button class="browse-button" type="button" data-browse="folder" data-target="signaturesDir">...</button>
-            </span>
-          </label>
-
-          <label class="field field-full">Fuente Aldrich
-            <span class="path-row">
-              <input id="font" name="font" value="/Users/rmlsub1/Library/Fonts/Aldrich-Regular.ttf" readonly>
-              <button class="browse-button" type="button" data-browse="file" data-target="font">...</button>
-            </span>
-          </label>
+          <input id="mockups" name="mockups" type="hidden" value="/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/MOCKUPS">
+          <input id="signaturesDir" name="signaturesDir" type="hidden" value="/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/FIRMAS">
+          <input id="font" name="font" type="hidden" value="/Users/rmlsub1/Library/Fonts/Aldrich-Regular.ttf">
 
           <label class="field designer-field">Disenador
             <select id="designer" name="designer">
@@ -75,10 +64,34 @@
 
         <div class="action-row">
           <button id="submit" class="primary-button" type="submit">Generar PDFs</button>
+          <button id="previewPrint" class="secondary-button" type="button">Revisar cola</button>
+          <button id="printQueue" class="secondary-button danger" type="button">Imprimir cola</button>
         </div>
       </section>
 
       <aside class="side-panel">
+        <section class="summary-panel" aria-label="Revision antes de procesar">
+          <h2>Revision</h2>
+          <div class="summary-grid">
+            <div class="summary-card">
+              <span>Modo</span>
+              <strong id="summaryMode">Por lote</strong>
+            </div>
+            <div class="summary-card">
+              <span>Filas</span>
+              <strong id="summaryRows">0</strong>
+            </div>
+            <div class="summary-card">
+              <span>Style</span>
+              <strong id="summaryStyles">Todos</strong>
+            </div>
+            <div class="summary-card">
+              <span>Tallas</span>
+              <strong id="summarySizes">Todas</strong>
+            </div>
+          </div>
+        </section>
+
         <section id="filters" class="filters" hidden>
           <div class="filter-block">
             <div class="filter-head">
@@ -97,12 +110,19 @@
           </div>
         </section>
 
-        <section class="log-panel">
-          <h2>Estado</h2>
-          <pre id="log">Selecciona un Excel para revisar datos.</pre>
+        <section id="log-container">
+          <div class="log-header">
+            Log de Consola
+            <button id="btnClearLog" type="button">Limpiar</button>
+          </div>
+          <div id="terminal"></div>
         </section>
       </aside>
     </form>
+
+    <footer class="footer-credits">
+      Creado por Jose Alberto Villarreal Garcia
+    </footer>
   </main>
 </body>
 </html>
