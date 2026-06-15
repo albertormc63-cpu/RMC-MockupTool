@@ -77,13 +77,14 @@ El flujo real de produccion Nike On Demand queda asi:
 
 Riesgo operativo detectado: el lunes a veces se agregan mas pedidos al mismo Excel `Por lote`. Como ese Excel se comparte entre `RMCOp-Nike` y `RMC MockupTool`, el panel debe poder comparar la lista cargada contra la carpeta de PDFs ya generados.
 
-Objetivo del siguiente ajuste:
+Validacion incremental implementada:
 
 - Leer el Excel cargado y construir la lista esperada de PDFs por WO/roster, style, talla y carpeta de salida.
-- Revisar en disco cuales PDFs ya existen.
-- Mostrar resumen de existentes, faltantes y duplicados antes de generar.
-- Permitir generar solo los faltantes.
-- Evitar duplicar PDFs y evitar registros duplicados en la BD de historial.
+- Revisar en disco cuales PDFs exactos ya existen.
+- Revisar en SQLite cuales claves ya fueron registradas.
+- Mostrar resumen de estados antes de generar.
+- Generar solo los items `FALTANTE`.
+- Evitar duplicar PDFs y registros en la BD de historial.
 - Mantener filtros por style/talla para que la validacion pueda hacerse por rango operativo.
 
 ## Historial y Logs
@@ -100,6 +101,7 @@ Tabla de este CEP:
 
 ```text
 rmc_mockuptool_runs
+rmc_mockuptool_items
 ```
 
 Tambien se mantiene un registro de apps/tablas disponibles:
@@ -116,6 +118,7 @@ Logs JSON por corrida:
 
 Campos principales guardados por corrida:
 
+- `id`: texto generado por el CEP en formato `AAAAMMDD-HHMMSS`, igual que `rmcop_nike_runs.id`.
 - Fecha en formato `DD/MM/AAAA`.
 - Hora en formato `HH:MM:SS`.
 - Seccion: `Por lote` o `Genericas Muestras`.
@@ -125,35 +128,52 @@ Campos principales guardados por corrida:
 
 La tabla `rmc_mockuptool_runs` es intencionalmente corta para consulta diaria. Los detalles tecnicos de respaldo se guardan en logs JSON dentro de `06_Logs`, no como columnas de la tabla.
 
-Cuando se agregue la validacion de existentes/faltantes, el historial debe registrar una corrida como regeneracion parcial cuando aplique. Idealmente debe separar:
+La tabla `rmc_mockuptool_items` guarda una fila por PDF generado y sirve para validar incrementales. Sigue el orden general de `rmcop_nike_items`, pero sin columnas de jugador cuando no aplican al mockup consolidado. `run_id` apunta al mismo valor de `rmc_mockuptool_runs.id`. Campos:
 
-- `existentes`: PDFs detectados antes de generar.
-- `faltantes`: PDFs esperados que no estaban en disco.
-- `generados`: PDFs creados en esa corrida.
-- `omitidos`: PDFs no generados porque ya existian.
-- `duplicados`: candidatos multiples encontrados para la misma clave.
+- `run_id`, `herramienta`, `fila_excel`.
+- `wo`, `ship_order`, `style`, `style_family`.
+- `equipo`, `variante`, `version`, `talla`, `piezas`.
+- `archivo`: solo nombre del PDF, no ruta completa.
+- `estado`, `error`, `tiempo`, `clave`.
+
+Claves:
+
+- `Por lote`: modo + Ship Order + WO + Style + Team/Color + Size consolidada.
+- `Genericas`: modo + WO + Roster + Style + Team/Color.
+
+Estados de validacion:
+
+- `FALTANTE`: no existe PDF exacto y la clave no esta registrada.
+- `YA_CREADO`: existe PDF exacto y la clave esta registrada.
+- `ARCHIVO_SIN_REGISTRO`: existe PDF exacto pero no hay registro en SQLite.
+- `REGISTRADO_SIN_ARCHIVO`: existe la clave en SQLite pero no el PDF exacto en la carpeta seleccionada.
+- `CONFLICTO`: hay claves o archivos destino duplicados dentro del Excel filtrado.
+
+Backfill inicial registrado:
+
+- Excel: `NIKE OD 19 JUN.xlsx`.
+- `A1000`: 87 items con `run_id` `20260612-155551`.
+- `Y1000`: 58 items con `run_id` `20260612-160250`.
+- `A2000`: 14 items con `run_id` `20260612-162101`.
+- `Y2000`: 6 items con `run_id` `20260612-162126`.
+- Total: 165 items marcados como `YA_CREADO` sin regenerar PDFs.
 
 Para revisar o borrar pruebas manualmente, usar DB Browser for SQLite o SQLiteStudio y abrir `RMC_BD/RMC_CEP.sqlite`.
 
 ## Validacion De PDFs Existentes
 
-Estado: pendiente de implementar.
-
-La validacion debe reutilizar la misma logica de nombres y carpetas que `generateMockups`:
+La validacion reutiliza la misma logica de nombres y carpetas que `generateMockups`:
 
 ```text
 Por lote/<Excel>/<StyleFamily>/<Talla>/<WO> - <Equipo> - <Style> - <Qty>pz.pdf
 Genericas Muestras/<Excel>/<StyleFamily>/<Fecha>/<Roster>.pdf
 ```
 
-Reglas deseadas:
+Reglas:
 
-- Si existe el PDF exacto esperado, marcarlo como existente y no regenerarlo por default.
-- Si no existe el exacto, buscar candidatos por WO en `Por lote` o por roster/WO en `Genericas`.
-- Si hay candidatos multiples como `archivo.pdf` y `archivo 2.pdf`, elegir el base para impresion, pero marcar duplicado para revision.
-- Si el Excel nuevo trae filas adicionales, generar solo esas faltantes.
-- La UI debe tener una accion tipo `Validar PDFs` o integrarlo antes de `Generar PDFs`.
-- El boton `Generar PDFs` debe poder operar en modo completo o `solo faltantes`; el modo seguro por default debe ser `solo faltantes` cuando existan archivos previos.
+- `Validar` no genera PDFs ni escribe items; solo compara Excel, carpeta destino y SQLite.
+- `Generar PDFs` valida antes de tocar archivos y procesa solo `FALTANTE`.
+- Si hay `CONFLICTO`, `Generar PDFs` se detiene para revision.
 - No borrar ni reemplazar PDFs existentes sin confirmacion explicita.
 
 ## Impresion

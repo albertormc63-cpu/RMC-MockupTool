@@ -9,6 +9,7 @@
   const terminal = document.getElementById("terminal");
   const btnClearLog = document.getElementById("btnClearLog");
   const button = document.getElementById("submit");
+  const validateIncrementalButton = document.getElementById("validateIncremental");
   const previewPrintButton = document.getElementById("previewPrint");
   const printQueueButton = document.getElementById("printQueue");
   const modeInputs = Array.from(document.querySelectorAll('input[name="mode"]'));
@@ -23,9 +24,11 @@
 
   const runtime = createRuntime();
   let excelSummary = null;
+  let incrementalValidation = null;
+  let incrementalValidationSignature = "";
 
   installConsoleLog();
-  setLog("Selecciona un Excel para revisar datos.", "log-success");
+  setLog("Selecciona un Excel para revisar datos.");
   setCepStatus();
   bindEvents();
   syncModeTabs();
@@ -64,6 +67,7 @@
     cepStatus.classList.toggle("offline", !runtime.ready);
     cepStatusText.textContent = runtime.ready ? "CEP listo" : "Sin Node";
     button.disabled = !runtime.ready;
+    validateIncrementalButton.disabled = !runtime.ready;
     previewPrintButton.disabled = !runtime.ready;
     printQueueButton.disabled = !runtime.ready;
 
@@ -79,6 +83,7 @@
     modeInputs.forEach((input) => {
       input.addEventListener("change", () => {
         syncModeTabs();
+        markValidationStale();
         resetExcelState();
         updateSummary();
         if (excelPathInput.value) analyzeExcel();
@@ -89,11 +94,16 @@
       syncAllCheckbox("style", allStyles);
       allSizes.checked = true;
       refreshSizeOptions();
+      markValidationStale();
       updateFilters();
     });
 
-    sizeOptions.addEventListener("change", () => syncAllCheckbox("size", allSizes));
+    sizeOptions.addEventListener("change", () => {
+      markValidationStale();
+      syncAllCheckbox("size", allSizes);
+    });
     resetUiButton.addEventListener("click", resetUi);
+    validateIncrementalButton.addEventListener("click", validateIncrementalFromButton);
     previewPrintButton.addEventListener("click", previewPrintQueue);
     printQueueButton.addEventListener("click", printSelectedQueue);
     btnClearLog.addEventListener("click", () => {
@@ -119,6 +129,7 @@
     if (!selectedPath) return;
 
     target.value = selectedPath;
+    markValidationStale();
     updateSummary();
 
     if (target.id === "excelPath") {
@@ -181,7 +192,7 @@
 
     if (!runtime.ready || !excelPathInput.value) return;
 
-    setLog("Leyendo Excel...", "log-success");
+    setLog("Leyendo Excel...");
     updateSummary({ rows: "..." });
 
     try {
@@ -203,7 +214,7 @@
         getSelectedMode() === "samples"
           ? "Equipos: " + (excelSummary.teams || []).join(", ")
           : "Tallas: " + (excelSummary.sizes || []).join(", ")
-      ].join("\n"), "log-success");
+      ].join("\n"));
     } catch (error) {
       setLog("ERROR AL LEER EXCEL:\n" + error.message, "log-error");
       updateSummary({ rows: "0" });
@@ -211,6 +222,7 @@
   }
 
   function resetExcelState() {
+    markValidationStale();
     excelSummary = null;
     resetFilterUi();
     updateSummary();
@@ -234,6 +246,8 @@
   }
 
   function toggleGroup(group, checked) {
+    markValidationStale();
+
     document.querySelectorAll('[data-group="' + group + '"]').forEach((input) => {
       input.checked = checked;
     });
@@ -292,13 +306,14 @@
   }
 
   function resetUi() {
+    markValidationStale();
     excelPathInput.value = "";
     excelSummary = null;
     resetFilterUi();
     allStyles.checked = true;
     allSizes.checked = true;
     syncCheckVisuals();
-    setLog("Selecciona un Excel para revisar datos.", "log-success");
+    setLog("Selecciona un Excel para revisar datos.");
     updateSummary({ rows: "0" });
   }
 
@@ -323,13 +338,24 @@
     if (!runtime.ready) return;
 
     setBusy(true);
-    setLog("Procesando...", "log-success");
+    setLog("Procesando...");
     updateSummary();
 
     try {
       const selectedFilters = updateFilters();
       validateSelection(selectedFilters);
+      const validation = validateIncremental(true);
 
+      if (validation.conflictos) {
+        throw new Error("Hay conflictos en la validacion. Revisa el log antes de generar.");
+      }
+
+      if (!validation.faltantes) {
+        setLog(formatValidationLog(validation, "Validacion lista. No hay PDFs faltantes por generar."), "log-warning");
+        return;
+      }
+
+      setBusy(true);
       const result = await runtime.generate.generateMockups(getJobOptions(selectedFilters));
 
       setLog([
@@ -338,8 +364,10 @@
         "Filas Excel: " + result.totalRows,
         "Filas seleccionadas: " + result.selectedRows,
         "Grupos consolidados: " + result.rows,
+        "Faltantes validados: " + (result.rowsToGenerate || 0),
         "PDFs generados: " + result.ok,
         "Mockups faltantes: " + result.missing,
+        result.itemsRecorded != null ? "Items registrados: " + result.itemsRecorded : "",
         "Styles procesados: " + (result.styles || []).join(", "),
         getSelectedMode() === "samples" ? "" : "Tallas procesadas: " + (result.sizes || []).join(", "),
         "Disenador: " + (result.designer || ""),
@@ -350,7 +378,7 @@
         "",
         "Primeros archivos:",
         ...(result.outputs || []).slice(0, 20)
-      ].filter(Boolean).join("\n"), "log-success");
+      ].filter(Boolean).join("\n"));
       updateSummary({
         rows: result.selectedRows || result.rows || 0,
         filters: selectedFilters
@@ -367,14 +395,14 @@
     if (!runtime.ready) return;
 
     setBusy(true);
-    setLog("Armando cola de impresion...", "log-success");
+    setLog("Armando cola de impresion...");
 
     try {
       const selectedFilters = updateFilters();
       validateSelection(selectedFilters);
 
       const result = runtime.generate.preparePrintQueue(getJobOptions(selectedFilters));
-      setLog(formatPrintQueueLog(result, "Cola de impresion lista."), result.missing || result.duplicates ? "log-warning" : "log-success");
+      setLog(formatPrintQueueLog(result, "Cola de impresion lista."), result.missing || result.duplicates ? "log-warning" : "");
       updateSummary({
         rows: result.printable || 0,
         filters: selectedFilters
@@ -417,9 +445,9 @@
 
       if (!window.confirm(message)) return;
 
-      setLog("Mandando PDFs a la cola de impresion...", "log-success");
+      setLog("Mandando PDFs a la cola de impresion...");
       const result = runtime.generate.submitPrintQueue(options);
-      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates ? "log-warning" : "log-success";
+      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates ? "log-warning" : "";
       setLog(formatPrintQueueLog(result, "Cola enviada a impresion."), statusClass);
       updateSummary({
         rows: result.submitted || 0,
@@ -448,6 +476,101 @@
       printOrder: "stack",
       limit: 0
     };
+  }
+
+  function validateIncremental(silent) {
+    if (!runtime.ready) return null;
+
+    const selectedFilters = updateFilters();
+    validateSelection(selectedFilters);
+
+    const signature = getValidationSignature(selectedFilters);
+
+    if (incrementalValidation && incrementalValidationSignature === signature) {
+      if (!silent) setLog(formatValidationLog(incrementalValidation, "Validacion vigente."), getValidationLogClass(incrementalValidation));
+      return incrementalValidation;
+    }
+
+    setBusy(true);
+    if (!silent) setLog("Validando incremental...");
+
+    try {
+      incrementalValidation = runtime.generate.validateMockups(getJobOptions(selectedFilters));
+      incrementalValidationSignature = signature;
+      if (!silent) setLog(formatValidationLog(incrementalValidation, "Validacion incremental lista."), getValidationLogClass(incrementalValidation));
+      updateSummary({
+        rows: incrementalValidation.faltantes,
+        filters: selectedFilters
+      });
+      return incrementalValidation;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function validateIncrementalFromButton() {
+    try {
+      validateIncremental(false);
+    } catch (error) {
+      setLog("ERROR AL VALIDAR:\n" + error.message, "log-error");
+      updateSummary();
+    }
+  }
+
+  function markValidationStale() {
+    incrementalValidation = null;
+    incrementalValidationSignature = "";
+  }
+
+  function getValidationSignature(selectedFilters) {
+    return JSON.stringify({
+      excel: excelPathInput.value,
+      out: document.getElementById("out").value,
+      mode: getSelectedMode(),
+      styles: selectedFilters.styles || [],
+      sizes: selectedFilters.sizes || []
+    });
+  }
+
+  function formatValidationLog(result, title) {
+    return [
+      title,
+      "Seccion: " + getModeLabel(),
+      "Filas Excel: " + result.totalRows,
+      "Filas seleccionadas: " + result.selectedRows,
+      "Grupos consolidados: " + result.rows,
+      "FALTANTE: " + result.faltantes,
+      "YA_CREADO: " + result.yaCreados,
+      "ARCHIVO_SIN_REGISTRO: " + result.archivosSinRegistro,
+      "REGISTRADO_SIN_ARCHIVO: " + result.registradosSinArchivo,
+      "CONFLICTO: " + result.conflictos,
+      "Styles: " + (result.styles || []).join(", "),
+      getSelectedMode() === "samples" ? "" : "Tallas: " + (result.sizes || []).join(", "),
+      "Salida: " + result.out,
+      "",
+      "Primeros estados:",
+      ...(result.items || []).slice(0, 20).map(formatValidationItem),
+      result.conflictos ? "" : "",
+      result.conflictos ? "Primeros conflictos:" : "",
+      ...(result.items || []).filter((item) => item.estado === "CONFLICTO").slice(0, 10).map(formatValidationItem)
+    ].filter(Boolean).join("\n");
+  }
+
+  function formatValidationItem(item) {
+    return [
+      item.estado,
+      item.clave || "SIN CLAVE",
+      item.style || "SIN STYLE",
+      item.size || "SIN TALLA",
+      item.error || "",
+      item.expectedPath
+    ].filter(Boolean).join(" | ");
+  }
+
+  function getValidationLogClass(result) {
+    if (result.conflictos) return "log-error";
+    if (result.archivosSinRegistro || result.registradosSinArchivo) return "log-warning";
+    return "";
   }
 
   function formatPrintQueueLog(result, title) {
@@ -515,6 +638,7 @@
 
   function setBusy(isBusy) {
     button.disabled = isBusy || !runtime.ready;
+    validateIncrementalButton.disabled = isBusy || !runtime.ready;
     previewPrintButton.disabled = isBusy || !runtime.ready;
     printQueueButton.disabled = isBusy || !runtime.ready;
   }
@@ -584,7 +708,7 @@
 
     console.log = function () {
       const message = Array.prototype.join.call(arguments, " ");
-      writeLog(message, "log-success");
+      writeLog(message);
       originalLog.apply(console, arguments);
     };
 

@@ -29,6 +29,11 @@ const PRINT_ORDER_EXCEL = "excel";
 const PRINT_ORDER_STACK = "stack";
 const MODE_BULK = "bulk";
 const MODE_SAMPLES = "samples";
+const STATE_MISSING = "FALTANTE";
+const STATE_CREATED = "YA_CREADO";
+const STATE_FILE_WITHOUT_RECORD = "ARCHIVO_SIN_REGISTRO";
+const STATE_RECORD_WITHOUT_FILE = "REGISTRADO_SIN_ARCHIVO";
+const STATE_CONFLICT = "CONFLICTO";
 const DESIGNERS = ["F-ALBERTO", "F-THANIA", "F-ANTONIO"];
 const SIGNATURE_WIDTH = 1.20;
 const BULK_SIGNATURE_POSITION = { x: 0.75, y: 2.05 };
@@ -757,6 +762,130 @@ function buildSelectedJob(options) {
   };
 }
 
+function validateMockups(options) {
+  const job = buildSelectedJob(options);
+  const items = job.rows.map(function (order, index) {
+    return buildValidationItem(job, order, index);
+  });
+  const keyCounts = countBy(items.map(function (item) { return item.clave; }));
+  const pathCounts = countBy(items.map(function (item) { return item.expectedPath; }));
+  const dbRecords = history.getItemRecordsByClaves(items.map(function (item) { return item.clave; }));
+
+  items.forEach(function (item) {
+    const fileExists = fs.existsSync(item.expectedPath);
+    const dbRecord = dbRecords[item.clave] || null;
+    const duplicatedKey = keyCounts[item.clave] > 1;
+    const duplicatedPath = pathCounts[item.expectedPath] > 1;
+
+    item.archivoExiste = fileExists;
+    item.registroExiste = !!dbRecord;
+    item.archivoRegistrado = dbRecord ? dbRecord.archivo : "";
+
+    if (duplicatedKey || duplicatedPath) {
+      item.estado = STATE_CONFLICT;
+      item.error = duplicatedKey ? "Clave duplicada en el Excel filtrado." : "Archivo destino duplicado en el Excel filtrado.";
+      return;
+    }
+
+    if (fileExists && dbRecord) {
+      item.estado = STATE_CREATED;
+      return;
+    }
+
+    if (fileExists && !dbRecord) {
+      item.estado = STATE_FILE_WITHOUT_RECORD;
+      return;
+    }
+
+    if (!fileExists && dbRecord) {
+      item.estado = STATE_RECORD_WITHOUT_FILE;
+      item.error = dbRecord.archivo ? "Registrado en BD con archivo: " + dbRecord.archivo : "Registrado en BD sin archivo.";
+      return;
+    }
+
+    item.estado = STATE_MISSING;
+  });
+
+  const counts = countBy(items.map(function (item) { return item.estado; }));
+
+  return {
+    mode: job.mode,
+    sectionLabel: job.sectionName,
+    excelName: job.excelName,
+    excelPath: options.excel || "",
+    sheetName: job.excel.sheetName,
+    out: job.outputRoot,
+    totalRows: job.excel.rows.length,
+    selectedRows: job.filteredRows.length,
+    rows: job.rows.length,
+    counts,
+    faltantes: counts[STATE_MISSING] || 0,
+    yaCreados: counts[STATE_CREATED] || 0,
+    archivosSinRegistro: counts[STATE_FILE_WITHOUT_RECORD] || 0,
+    registradosSinArchivo: counts[STATE_RECORD_WITHOUT_FILE] || 0,
+    conflictos: counts[STATE_CONFLICT] || 0,
+    items,
+    styles: uniqueSorted(job.rows.map(function (row) { return getStyleFamily(row.style); })),
+    sizes: uniqueSorted(job.rows.map(function (row) { return row.size; }))
+  };
+}
+
+function buildValidationItem(job, order, index) {
+  const expectedPath = job.mode === MODE_SAMPLES ? buildSamplesOutputPath(job.outputRoot, order) : buildOutputPath(job.outputRoot, order);
+  const equipo = getOrderTeamName(order);
+
+  return {
+    excelOrder: index + 1,
+    filaExcel: order.sourceRow,
+    sourceRow: order.sourceRow,
+    sourceRows: order.sourceRows || [order.sourceRow],
+    herramienta: job.mode === MODE_SAMPLES ? "RMC MockupTool Genericas" : "RMC MockupTool Por Lote",
+    clave: buildItemKey(job.mode, order),
+    expectedPath,
+    archivo: path.basename(expectedPath),
+    wo: order.wo || "",
+    shipOrder: order.shipOrder || "",
+    style: order.style || "",
+    styleFamily: getStyleFamily(order.style),
+    equipo,
+    variante: order.variant || "",
+    version: order.version || "",
+    color: order.color || "",
+    talla: order.size || "",
+    size: order.size || "",
+    piezas: normalizeQty(order.qty),
+    estado: "",
+    error: ""
+  };
+}
+
+function buildItemKey(mode, order) {
+  const colorOrTeam = getOrderTeamLabel(order) || cleanUpper(order.color);
+  const parts = mode === MODE_SAMPLES
+    ? [MODE_SAMPLES, order.wo, order.roster, order.style, colorOrTeam]
+    : [MODE_BULK, order.shipOrder, order.wo, order.style, colorOrTeam, order.size];
+
+  return parts.map(cleanUpper).join("||");
+}
+
+function getOrderTeamLabel(order) {
+  if (!order.teamInfo) return cleanUpper(order.color);
+  return cleanUpper([order.line, order.teamInfo.team, order.teamInfo.nickname].filter(Boolean).join(" "));
+}
+
+function getOrderTeamName(order) {
+  if (!order.teamInfo) return clean(order.color);
+  return clean(order.teamInfo.team);
+}
+
+function countBy(values) {
+  return values.reduce(function (counts, value) {
+    const key = value || "";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+}
+
 async function generateMockups(options) {
   // Flujo principal:
   // 1. Leer Excel segun modo.
@@ -771,12 +900,22 @@ async function generateMockups(options) {
   const rows = job.rows;
   const sectionName = job.sectionName;
   const outputRoot = job.outputRoot;
+  const validation = validateMockups(options);
+  const validationByClave = validation.items.reduce(function (index, item) {
+    index[item.clave] = item;
+    return index;
+  }, {});
+  const rowsToGenerate = rows.filter(function (order) {
+    const item = validationByClave[buildItemKey(mode, order)];
+    return item && item.estado === STATE_MISSING;
+  });
   const designer = normalizeDesigner(options.designer);
   const signaturePath = resolveSignaturePath(designer, options.signaturesDir);
   let ok = 0;
   let missing = 0;
   const outputs = [];
   const missingRows = [];
+  const generatedItems = [];
 
   console.log(`Excel: ${options.excel || excelName || "upload"}`);
   console.log(`Modo: ${mode}`);
@@ -787,18 +926,33 @@ async function generateMockups(options) {
   console.log(`Filas Excel: ${excel.rows.length}`);
   console.log(`Filas seleccionadas: ${filteredRows.length}`);
   console.log(`Grupos consolidados: ${rows.length}`);
+  console.log(`Faltantes por generar: ${rowsToGenerate.length}`);
 
-  for (const order of rows) {
+  for (const order of rowsToGenerate) {
+    const validationItem = validationByClave[buildItemKey(mode, order)];
     const mockupPath = buildMockupPath(options.mockups, order);
 
     if (!mockupPath || !fs.existsSync(mockupPath)) {
       missing++;
-      missingRows.push({ sourceRow: order.sourceRow, style: order.style, color: order.color, mockupPath });
+      missingRows.push({
+        sourceRow: order.sourceRow,
+        sourceRows: order.sourceRows || [order.sourceRow],
+        clave: validationItem ? validationItem.clave : buildItemKey(mode, order),
+        style: order.style,
+        color: order.color,
+        mockupPath
+      });
       console.warn(`Mockup faltante fila ${order.sourceRow}: ${order.style} | ${order.color} | ${mockupPath || "sin ruta"}`);
       continue;
     }
 
-    const outputPath = getAvailableOutputPath(mode === MODE_SAMPLES ? buildSamplesOutputPath(outputRoot, order) : buildOutputPath(outputRoot, order));
+    const outputPath = validationItem ? validationItem.expectedPath : mode === MODE_SAMPLES ? buildSamplesOutputPath(outputRoot, order) : buildOutputPath(outputRoot, order);
+
+    if (fs.existsSync(outputPath)) {
+      console.warn(`Archivo ya existe antes de generar: ${outputPath}`);
+      continue;
+    }
+
     const annotate = mode === MODE_SAMPLES ? annotateSamplesPdf : annotatePdf;
     await annotate({
       mockupPath,
@@ -810,6 +964,11 @@ async function generateMockups(options) {
     });
     ok++;
     outputs.push(outputPath);
+    generatedItems.push(Object.assign({}, validationItem, {
+      archivo: outputPath,
+      estado: STATE_CREATED,
+      error: ""
+    }));
     console.log(`OK fila ${order.sourceRow}: ${outputPath}`);
   }
 
@@ -830,8 +989,10 @@ async function generateMockups(options) {
     signaturePath,
     out: outputRoot,
     rows: rows.length,
+    rowsToGenerate: rowsToGenerate.length,
     selectedRows: filteredRows.length,
     totalRows: excel.rows.length,
+    validation,
     styles: uniqueSorted(rows.map(function (row) { return getStyleFamily(row.style); })),
     sizes: uniqueSorted(rows.map(function (row) { return row.size; }))
   };
@@ -860,6 +1021,8 @@ async function generateMockups(options) {
     });
     result.historyDb = historyResult.dbPath;
     result.historyLog = historyResult.logPath;
+    result.historyRunId = historyResult.runId;
+    result.itemsRecorded = history.recordItems(historyResult.runId, generatedItems);
   } catch (error) {
     result.historyWarning = error.message;
     console.warn(`Historial no registrado: ${error.message}`);
@@ -1221,10 +1384,16 @@ module.exports = {
   PRINT_ORDER_STACK,
   MODE_BULK,
   MODE_SAMPLES,
+  STATE_MISSING,
+  STATE_CREATED,
+  STATE_FILE_WITHOUT_RECORD,
+  STATE_RECORD_WITHOUT_FILE,
+  STATE_CONFLICT,
   buildMockupPath,
   buildOutputPath,
   buildSamplesOutputPath,
   generateMockups,
+  validateMockups,
   preparePrintQueue,
   submitPrintQueue,
   history,

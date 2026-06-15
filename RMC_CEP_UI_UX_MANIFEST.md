@@ -161,7 +161,7 @@ footer credito
 - Detalles largos en bloque con scroll.
 - Filtros por style y talla como cards compactas.
 - Para lotes con PDFs ya generados, mostrar conteos de existentes, faltantes, duplicados y omitidos.
-- La accion segura debe permitir generar solo faltantes cuando el Excel fue actualizado despues del lote inicial.
+- La accion segura debe permitir generar solo `FALTANTE` cuando el Excel fue actualizado despues del lote inicial.
 
 ### Logs
 
@@ -215,19 +215,31 @@ No mezclar comportamiento entre ambos sin una razon clara.
 Para `RMC MockupTool`, el flujo batch debe considerar que el Excel `Por lote` puede cambiar despues de que ya se generaron PDFs. La UI debe soportar una revision previa antes de generar:
 
 - `Esperados`: grupos consolidados segun Excel, filtros por style/talla y modo activo.
-- `Existentes`: PDFs exactos ya presentes en la carpeta de salida.
-- `Faltantes`: PDFs esperados que todavia no existen y deben generarse.
-- `Duplicados`: candidatos multiples para la misma clave, por ejemplo copias con sufijo ` 2`.
-- `Omitidos`: archivos que no se regeneran porque ya existen.
+- `FALTANTE`: no existe PDF exacto y la clave no esta registrada; es lo unico que debe generar el flujo seguro.
+- `YA_CREADO`: existe PDF exacto y la clave esta registrada en SQLite.
+- `ARCHIVO_SIN_REGISTRO`: existe PDF exacto en disco pero falta el item en SQLite; requiere backfill o revision.
+- `REGISTRADO_SIN_ARCHIVO`: la clave existe en SQLite pero el PDF exacto ya no esta en la carpeta elegida.
+- `CONFLICTO`: claves o archivos destino duplicados dentro del Excel filtrado.
 
 Reglas de interfaz:
 
 - Mostrar estos conteos en el panel de revision o log antes de generar.
 - El operador debe poder entender si se hara una generacion completa o parcial.
-- Cuando existan PDFs previos, el comportamiento seguro recomendado es `solo faltantes`.
-- Si se permite regenerar todo, pedir confirmacion clara porque puede crear duplicados y ensuciar el historial.
+- El comportamiento seguro debe ser `solo FALTANTE`.
+- Si hay `CONFLICTO`, detener la generacion y mostrar ejemplos.
+- No generar ni registrar items durante la accion `Validar`; validar primero, generar despues.
 - Mantener los filtros por style/talla como fuente del alcance de la validacion.
 - En impresion, mostrar el orden real de envio a cola y mantener el orden invertido cuando se busque que la pila fisica quede como el Excel.
+
+Reglas de BD para items:
+
+- `rmc_mockuptool_runs.id` debe ser TEXT generado por el CEP en formato `AAAAMMDD-HHMMSS`, igual que `rmcop_nike_runs.id`.
+- `rmc_mockuptool_items.run_id` debe apuntar a ese mismo valor textual.
+- `rmc_mockuptool_items` debe seguir el orden operativo de `rmcop_nike_items`.
+- `archivo` debe guardar solo el nombre del PDF, no rutas completas.
+- `run_id` debe verse como `AAAAMMDD-HHMMSS`.
+- `tiempo` debe usarse como duracion o marcador operativo, por ejemplo `00:00:00`; no mezclar fecha y hora aqui.
+- Mantener `clave` como base anti-duplicados.
 
 ## Variantes RMCOp-Nike
 

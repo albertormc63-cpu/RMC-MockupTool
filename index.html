@@ -11,13 +11,10 @@
 <body>
   <main class="app-shell">
     <header class="topbar">
+      <div class="header-spacer" aria-hidden="true"></div>
       <div class="header-logo-slot">
-        <img src="./assets/logo rmc m.svg" alt="RMC" class="header-logo header-logo-rmc">
+        <img src="./assets/logo rmc.svg" alt="RMC" class="header-logo header-logo-rmc">
       </div>
-      <!-- <div class="header-title"> -->
-        <!-- <h1>RMC MockupTool</h1> -->
-        <!-- <p class="subtitle">Mockups PDF desde listas Nike On Demand</p> -->
-      <!-- </div> -->
       <div class="topbar-actions">
         <button id="resetUi" class="reset-button" type="button" title="Limpiar Excel y filtros" aria-label="Limpiar Excel y filtros">↻</button>
         <span id="cepStatus" class="status-pill">
@@ -63,6 +60,7 @@
         </div>
 
         <div class="action-row">
+          <button id="validateIncremental" class="secondary-button" type="button">Validar</button>
           <button id="submit" class="primary-button" type="submit">Generar PDFs</button>
           <button id="previewPrint" class="secondary-button" type="button">Revisar cola</button>
           <button id="printQueue" class="secondary-button danger" type="button">Imprimir cola</button>
@@ -110,15 +108,16 @@
           </div>
         </section>
 
-        <section id="log-container">
-          <div class="log-header">
-            Log de Consola
-            <button id="btnClearLog" type="button">Limpiar</button>
-          </div>
-          <div id="terminal"></div>
-        </section>
       </aside>
     </form>
+
+    <section id="log-container">
+      <div class="log-header">
+        Log de Consola
+        <button id="btnClearLog" type="button">Limpiar</button>
+      </div>
+      <div id="terminal"></div>
+    </section>
 
     <footer class="footer-credits">
       Creado por Jose Alberto Villarreal Garcia
