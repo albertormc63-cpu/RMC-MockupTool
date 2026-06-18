@@ -29,6 +29,10 @@ const PRINT_ORDER_EXCEL = "excel";
 const PRINT_ORDER_STACK = "stack";
 const MODE_BULK = "bulk";
 const MODE_SAMPLES = "samples";
+const SECTION_BULK = "Personalizadas";
+const SECTION_SAMPLES = "Genericas";
+const TOOL_BULK = "RMC MockupTool Personalizada";
+const TOOL_SAMPLES = "RMC MockupTool Genericas";
 const STATE_MISSING = "FALTANTE";
 const STATE_CREATED = "YA_CREADO";
 const STATE_FILE_WITHOUT_RECORD = "ARCHIVO_SIN_REGISTRO";
@@ -143,9 +147,91 @@ function normalizeMode(value) {
   return mode === "SAMPLES" || mode === "GENERICAS" || mode === "GENERICAS/MUESTRAS" ? MODE_SAMPLES : MODE_BULK;
 }
 
+function validateExcelMode(excelPath, mode) {
+  const cleanedPath = clean(excelPath);
+  const fileName = path.basename(cleanedPath, path.extname(cleanedPath));
+  const normalizedName = cleanUpper(fileName);
+  const hasToken = function (token) {
+    return new RegExp(`(^|[^A-Z0-9])${token}([^A-Z0-9]|$)`).test(normalizedName);
+  };
+  const hasOd = hasToken("OD");
+  const genericCodes = ["ST", "IH", "TB", "AS"].filter(hasToken);
+  const selectedMode = normalizeMode(mode);
+  let detectedMode = "";
+
+  if (hasOd && !genericCodes.length) detectedMode = MODE_BULK;
+  if (!hasOd && genericCodes.length) detectedMode = MODE_SAMPLES;
+
+  if (!detectedMode) {
+    return {
+      valid: false,
+      message: hasOd && genericCodes.length
+        ? `El Excel \"${fileName}\" mezcla OD con ${genericCodes.join("/")}; no se puede determinar su seccion.`
+        : `El Excel \"${fileName}\" no contiene OD ni un codigo de Genericas (ST, IH, TB o AS).`
+    };
+  }
+
+  if (detectedMode !== selectedMode) {
+    return {
+      valid: false,
+      detectedMode,
+      message: detectedMode === MODE_BULK
+        ? `El Excel \"${fileName}\" contiene OD y debe cargarse en Personalizadas.`
+        : `El Excel \"${fileName}\" contiene ${genericCodes.join("/")} y debe cargarse en Genericas.`
+    };
+  }
+
+  return { valid: true, detectedMode, genericCodes };
+}
+
 function normalizeDesigner(value) {
   const designer = cleanUpper(value);
   return DESIGNERS.indexOf(designer) !== -1 ? designer : DESIGNERS[0];
+}
+
+function normalizeFechaEmbarque(value) {
+  const dateParts = clean(value).split(",").map(function (part) { return part.trim(); }).filter(Boolean);
+  if (dateParts.length > 1) {
+    return Array.from(new Set(dateParts.map(normalizeFechaEmbarque).filter(Boolean))).join(", ");
+  }
+
+  const normalized = cleanUpper(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[._]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  const numericMatch = normalized.match(/\b(\d{1,2})[-/\s]+(\d{1,2})(?:[-/\s]+\d{2,4})?\b/);
+  const textMatch = normalized.match(/\b(\d{1,2})[-/\s]+([A-Z]+)\b/);
+
+  if (numericMatch) {
+    const monthNumber = Number(numericMatch[2]);
+    if (monthNumber >= 1 && monthNumber <= 12) {
+      return `${String(Number(numericMatch[1])).padStart(2, "0")}/${String(monthNumber).padStart(2, "0")}`;
+    }
+  }
+
+  if (!textMatch) return normalized;
+
+  const monthMap = {
+    ENE: 1, ENERO: 1, JAN: 1, JANUARY: 1,
+    FEB: 2, FEBRERO: 2, FEBRUARY: 2,
+    MAR: 3, MARZO: 3, MARCH: 3,
+    ABR: 4, ABRIL: 4, APR: 4, APRIL: 4,
+    MAY: 5, MAYO: 5,
+    JUN: 6, JUNIO: 6, JUNE: 6,
+    JUL: 7, JULIO: 7, JULY: 7,
+    AGO: 8, AGOSTO: 8, AUG: 8, AUGUST: 8,
+    SEP: 9, SEPT: 9, SEPTIEMBRE: 9, SEPTEMBER: 9,
+    OCT: 10, OCTUBRE: 10, OCTOBER: 10,
+    NOV: 11, NOVIEMBRE: 11, NOVEMBER: 11,
+    DIC: 12, DICIEMBRE: 12, DEC: 12, DECEMBER: 12
+  };
+  const month = monthMap[textMatch[2]] || monthMap[textMatch[2].slice(0, 3)];
+
+  return month
+    ? `${String(Number(textMatch[1])).padStart(2, "0")}/${String(month).padStart(2, "0")}`
+    : normalized;
 }
 
 function summarizeExcel(excel) {
@@ -709,7 +795,13 @@ function buildOutputPath(outDir, order) {
 function buildSamplesOutputPath(outDir, order) {
   const styleFamily = getStyleFamily(order.style);
   const dateFolder = sanitizeFilePart(order.shipDate || "SIN_FECHA");
-  const fileName = sanitizeFilePart(order.roster || `FILA ${String(order.sourceRow).padStart(3, "0")}`) || "SIN_ROSTER";
+  const teamPart = order.teamInfo ? `${order.line} ${order.teamInfo.team} ${order.teamInfo.nickname}` : order.line || "SIN_EQUIPO";
+  const fileName = [
+    order.roster || "SIN_ROSTER",
+    teamPart,
+    order.style,
+    order.qty ? `${order.qty}pz` : "1pz"
+  ].filter(Boolean).map(sanitizeFilePart).join(" - ");
 
   return path.join(outDir, styleFamily, dateFolder, `${fileName}.pdf`);
 }
@@ -744,12 +836,21 @@ function getStyleFamily(style) {
 function buildSelectedJob(options) {
   const mode = normalizeMode(options.mode);
   const excelName = options.excelName || options.excel || "Excel";
+  const modeValidation = validateExcelMode(excelName, mode);
+
+  if (!modeValidation.valid) {
+    throw new Error(modeValidation.message);
+  }
+
   const excel = options.excelBuffer ? readExcelBuffer(options.excelBuffer, mode) : readExcel(options.excel, mode);
   const filteredRows = filterRows(excel.rows, options);
   const consolidatedRows = mode === MODE_SAMPLES ? consolidateSampleRows(filteredRows) : consolidateRows(filteredRows);
   const rows = options.limit > 0 ? consolidatedRows.slice(0, options.limit) : consolidatedRows;
-  const sectionName = mode === MODE_SAMPLES ? "Genericas Muestras" : "Por lote";
+  const sectionName = mode === MODE_SAMPLES ? SECTION_SAMPLES : SECTION_BULK;
   const outputRoot = getSectionOutputRoot(options.out, sectionName, excelName);
+  const fechaEmbarque = mode === MODE_SAMPLES
+    ? uniqueSorted(consolidatedRows.map(function (row) { return normalizeFechaEmbarque(row.shipDate); })).join(", ")
+    : normalizeFechaEmbarque(excel.dateText);
 
   return {
     mode,
@@ -758,7 +859,8 @@ function buildSelectedJob(options) {
     filteredRows,
     rows,
     sectionName,
-    outputRoot
+    outputRoot,
+    fechaEmbarque
   };
 }
 
@@ -815,6 +917,7 @@ function validateMockups(options) {
     excelPath: options.excel || "",
     sheetName: job.excel.sheetName,
     out: job.outputRoot,
+    fechaEmbarque: job.fechaEmbarque,
     totalRows: job.excel.rows.length,
     selectedRows: job.filteredRows.length,
     rows: job.rows.length,
@@ -839,7 +942,8 @@ function buildValidationItem(job, order, index) {
     filaExcel: order.sourceRow,
     sourceRow: order.sourceRow,
     sourceRows: order.sourceRows || [order.sourceRow],
-    herramienta: job.mode === MODE_SAMPLES ? "RMC MockupTool Genericas" : "RMC MockupTool Por Lote",
+    herramienta: job.mode === MODE_SAMPLES ? TOOL_SAMPLES : TOOL_BULK,
+    fechaEmbarque: job.mode === MODE_SAMPLES ? normalizeFechaEmbarque(order.shipDate) : job.fechaEmbarque,
     clave: buildItemKey(job.mode, order),
     expectedPath,
     archivo: path.basename(expectedPath),
@@ -980,6 +1084,7 @@ async function generateMockups(options) {
     outputs,
     missingRows,
     dateText: excel.dateText,
+    fechaEmbarque: job.fechaEmbarque,
     mode,
     sectionLabel: sectionName,
     excelName,
@@ -1001,6 +1106,8 @@ async function generateMockups(options) {
     const historyResult = history.recordRun({
       mode,
       sectionLabel: sectionName,
+      herramienta: mode === MODE_SAMPLES ? TOOL_SAMPLES : TOOL_BULK,
+      fechaEmbarque: job.fechaEmbarque,
       excelName,
       excelPath: options.excel || "",
       sheetName: excel.sheetName,
@@ -1180,6 +1287,7 @@ function preparePrintQueue(options) {
     excelPath: options.excel || "",
     sheetName: job.excel.sheetName,
     out: job.outputRoot,
+    fechaEmbarque: job.fechaEmbarque,
     totalRows: job.excel.rows.length,
     selectedRows: job.filteredRows.length,
     rows: job.rows.length,
@@ -1384,6 +1492,7 @@ module.exports = {
   PRINT_ORDER_STACK,
   MODE_BULK,
   MODE_SAMPLES,
+  validateExcelMode,
   STATE_MISSING,
   STATE_CREATED,
   STATE_FILE_WITHOUT_RECORD,

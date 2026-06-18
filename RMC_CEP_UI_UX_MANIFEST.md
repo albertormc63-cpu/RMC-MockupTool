@@ -1,305 +1,327 @@
 # RMC CEP UI/UX Manifest
 
-Ultima actualizacion: 2026-06-15.
+Ultima actualizacion: 2026-06-17.
 
-Este archivo define la estetica, estructura, reglas de interfaz y metricas visuales para paneles CEP de RMC.
+Contrato visual y operativo de `RMC MockupTool`. El panel hereda la identidad de RMCOp-Nike, pero mantiene codigo, textos, rutas y tablas propias.
 
-Origen: el patron visual viene de `RMCOp-Nike`, que actualmente es la referencia con mejor apariencia.
-Aplicacion en este repo: `RMC MockupTool` hereda esa identidad porque antes vivia anidado dentro de `RMCOp-Nike`,
-pero debe mantenerse como CEP separado, con sus propios textos, rutas, README, historial y comportamiento.
+El comportamiento funcional detallado vive en `README.md`. Este archivo define como debe presentarse ese comportamiento y que protecciones no pueden perderse al modificar la interfaz.
 
-Usalo como referencia para crear o ajustar otros paneles CEP de RMC con una identidad visual parecida.
+## Objetivo
 
-## Objetivo De Diseno
+El CEP es una herramienta de produccion compacta para Illustrator. Debe permitir que el operador identifique rapidamente:
 
-Los paneles CEP de RMC deben sentirse como herramientas de produccion: compactas, claras, oscuras, rapidas y enfocadas en evitar errores.
-No deben sentirse como landing pages, dashboards decorativos ni interfaces de marketing.
+- Que seccion esta activa.
+- Que Excel y destino selecciono.
+- Que Style y tallas entran en el proceso.
+- Que archivos faltan, existen o presentan inconsistencias.
+- Que se generara o imprimira antes de ejecutar la accion.
+- Donde se guardaron PDFs, historial y logs.
 
-La prioridad es que el operador pueda:
+No debe sentirse como landing page, dashboard decorativo ni sistema administrativo general.
 
-- Seleccionar rapido.
-- Revisar rutas y datos sin perderse.
-- Detectar errores antes de procesar.
-- Detectar PDFs existentes, faltantes y duplicados antes de regenerar lotes.
-- Procesar lotes sin romper el flujo manual.
-- Leer logs y estados dentro del panel.
+## Jerarquia Actual
 
-## Paleta Base
+```text
+header
+  logo RMC
+  reset
+  estado CEP
+workspace
+  panel principal
+    tabs Personalizadas / Genericas
+    Excel
+    Salida
+    Disenador
+    Validar / Generar PDFs / Revisar cola / Imprimir cola
+  panel lateral
+    resumen
+    filtros Style / Tallas
+consola
+footer
+```
 
-Tomada de la familia visual de `RMCOp-Nike` y alineada con `css/styles.css` de este repo.
+El primer viewport debe mostrar el trabajo real, no una portada.
+
+## Paleta
+
+La fuente de verdad es `css/styles.css`. Base vigente:
 
 ```css
 :root {
-  --bg: #1f2023;
-  --panel: #292b30;
-  --panel-2: #23252a;
-  --field: #17191d;
-  --line: #444952;
-  --line-soft: #343941;
-  --text: #f2f2ef;
-  --muted: #aeb4bf;
-  --muted-2: #7f8794;
-  --accent: #b91f35;
-  --accent-dark: #841727;
-  --ok: #38c172;
-  --danger: #c83f52;
-  --focus: #f2c94c;
+  --rmc-bg: #2b2b2b;
+  --rmc-surface: #3a3a3a;
+  --rmc-surface-soft: #333333;
+  --rmc-surface-deep: #1e1e1e;
+  --rmc-field: #181a1d;
+  --rmc-border: #444444;
+  --rmc-border-strong: #666666;
+  --rmc-text: #ffffff;
+  --rmc-muted: #cccccc;
+  --rmc-primary: #821424;
+  --rmc-primary-hover: #a21a2f;
+  --rmc-primary-strong: #bd1f36;
+  --rmc-focus: #f7c948;
 }
 ```
 
-Uso recomendado:
+Colores de consola:
 
-- `--bg`: fondo general del panel.
-- `--panel`: contenedores principales, tarjetas y bloques de revision.
-- `--panel-2`: botones secundarios, tabs o superficies interactivas.
-- `--field`: inputs, selects, filtros y superficies editables.
-- `--line`: bordes discretos.
-- `--line-soft`: bordes internos de baja jerarquia.
-- `--text`: texto principal.
-- `--muted`: etiquetas, ayudas y texto secundario.
-- `--muted-2`: subtitulos y texto terciario.
-- `--accent`: accion principal y paso activo.
-- `--accent-dark`: hover de accion principal.
-- `--ok`: estado listo, exito o corrida terminada.
-- `--danger`: errores, estado offline o fallos.
-- `--focus`: foco de teclado, advertencias suaves y timers importantes.
+- Texto base: `#00ff00`.
+- Exito: `#50fa7b`.
+- Error: `#ff5555`.
+- Warning: `#f1fa8c`.
+- Fondo profundo: `#1e1e1e`.
 
-Colores auxiliares actuales:
+Evitar gradientes decorativos, orbes, ilustraciones de marketing y paletas dominadas por un solo tono.
 
-- Exito/log corriendo heredado: `#7ee787`.
-- Error heredado: `#ff6b6b`.
-- Fondo consola: `#151719` o `#15171b`.
-- Inputs heredados: `#181a1d`.
+## Tipografia Y Densidad
 
-## Tipografia
-
-- Fuente base: `Arial, Helvetica, sans-serif`.
-- Fuente tecnica/rutas/logs: `Menlo, Monaco, Consolas, monospace`.
-- Tamano base CEP: `12px`.
+- Base: `Arial, Helvetica, sans-serif`.
+- Rutas y logs: `Menlo, Monaco, Consolas, monospace`.
+- Texto base CEP: alrededor de `12px`.
 - Labels y ayudas: `9px` a `10px`.
-- Titulos internos: `16px`, sin hero type.
-- No usar letter spacing negativo.
+- Titulos internos: maximo aproximado `16px`.
+- Letter spacing: `0`; nunca negativo.
+- Botones e inputs: entre `30px` y `34px` de alto.
+- Radios de borde: `5px` o `6px`; nunca estilo capsula salvo estado compacto existente.
 
-## Layout General
+## Layout
 
-El panel esta disenado para espacios pequenos dentro de Illustrator.
+- Tamano inicial CEP: `620x760`.
+- Minimo declarado: `420x560`.
+- Maximo declarado: `1100x1200`.
+- El contenido debe responder sin overflow horizontal.
+- Usar grids compactos; no cards dentro de cards.
+- Las rutas largas deben envolver o usar overflow controlado.
+- Resumen, filtros y consola deben conservar dimensiones estables al cambiar conteos.
+- En anchos reducidos, priorizar Excel, salida, acciones y log.
 
-Reglas:
-
-- `body` con padding compacto de `10px` a `14px`, segun ancho disponible.
-- Ancho minimo operativo: `280px`.
-- Navegacion por pasos, no sidebar pesada.
-- Secciones con `display: none/block` para mostrar una pagina a la vez.
-- Grids compactos de 2 o 3 columnas segun el contexto.
-- Evitar cards anidadas.
-- Usar paneles solo para agrupar informacion accionable.
-
-Estructura recomendada:
-
-```text
-header marca/estado
-nav pasos principales o tabs de modo
-main
-  page activa
-log interno o panel de estado
-footer credito
-```
-
-## Componentes Base
+## Controles
 
 ### Header
 
-- Grid de 3 columnas cuando haya logos, titulo y accion rapida.
-- Flex compacto cuando el panel solo necesite titulo y estado.
-- Logos compactos.
-- Accion rapida de reset como icon button.
-- Borde inferior con `--line`.
+- Logo centrado.
+- Reset como boton de icono con `title` y `aria-label`.
+- Estado CEP visible: listo o sin Node.
+- Reset limpia Excel, filtros y validacion en memoria; nunca borra archivos o BD.
 
-### Navegacion
+### Seccion
 
-- Botones por paso.
-- Paso activo con `--accent`.
-- Texto corto: `1 Equipo`, `2 Pedido`, `3 Proceso`, `Por lote`, `Rutas`.
+- Control segmentado con `Personalizadas` y `Genericas`.
+- La opcion activa debe distinguirse con `--accent`.
+- El cambio de seccion invalida la validacion y vuelve a analizar el Excel seleccionado.
+- No usar las etiquetas antiguas `Por lote` o `Genericas Muestras`.
 
-### Botones
+### Selectores
 
-- Radio de borde: `5px`.
-- Altura minima: `30px` a `34px`.
-- Boton primario: fondo `--accent`.
-- Boton secundario: fondo oscuro `#24262a`, borde `#555b64`.
-- Hover: cambiar borde, no hacer animaciones grandes.
-- Focus: borde u outline visible con `--focus`.
+- Excel y salida son campos readonly con boton de exploracion.
+- El destino siempre lo selecciona el usuario.
+- Mockups, firmas y fuente permanecen ocultos mientras sean configuracion estable.
+- Rutas seleccionadas deben permanecer visibles y legibles.
 
-### Inputs Y Selects
+### Disenador
 
-- Fondo `--field` o `#181a1d`.
-- Borde `#555b64`.
-- Radio `5px`.
-- Altura minima `32px` a `33px`.
-- Texto principal `--text`.
-- Labels en `--muted`, `10px`.
+Select con:
 
-### Tarjetas
+- `F-ALBERTO`
+- `F-THANIA`
+- `F-ANTONIO`
 
-- Usar solo para equipos, resumenes repetidos o bloques accionables.
-- Fondo `--panel`.
-- Borde `--line`.
-- Radio `5px` o `6px`.
-- Seleccion activa con borde `--accent` o variante fuerte heredada.
+### Filtros
 
-### Previews
+- Style se presenta por familia.
+- `Todos` debe reflejar el estado real del grupo.
+- Tallas se muestran solamente en Personalizadas.
+- Las tallas disponibles se recalculan segun Styles activos.
+- Cambiar un filtro invalida la validacion incremental.
 
-- Imagen como `background-image`.
-- `background-size: cover`.
-- Borde interno oscuro.
-- Placeholder visual cuando falte imagen.
+### Acciones
 
-### Batch / Produccion
+- `Validar`: secundaria y no destructiva.
+- `Generar PDFs`: accion primaria.
+- `Revisar cola`: secundaria y no imprime.
+- `Imprimir cola`: accion sensible; pide confirmacion.
+- Mientras una accion esta en curso, los cuatro botones quedan deshabilitados.
+- El texto del boton debe describir la accion; no usar `Continuar` o copys ambiguos.
 
-- Mostrar conteos visibles: validas, errores, tallas.
-- Timer con fuente monospace.
-- Detalles largos en bloque con scroll.
-- Filtros por style y talla como cards compactas.
-- Para lotes con PDFs ya generados, mostrar conteos de existentes, faltantes, duplicados y omitidos.
-- La accion segura debe permitir generar solo `FALTANTE` cuando el Excel fue actualizado despues del lote inicial.
+## Validacion De Seccion
 
-### Logs
+Antes de leer el archivo:
 
-- Consola interna fija debajo del flujo.
-- Fondo `#151719`.
-- Monospace `10px` a `11px`.
-- Colores por estado:
-  - Exito: `#7ee787`.
-  - Error: `#ff6b6b`.
-  - Warning: `#f7c948`.
+- `OD` corresponde a Personalizadas.
+- `ST`, `IH`, `TB` y `AS` corresponden a Genericas.
+- Los codigos deben ser tokens aislados.
+- Nombre sin codigo: bloquear.
+- Codigo de otra seccion: bloquear y explicar donde corresponde.
+- OD mezclado con codigo de Genericas: bloquear como ambiguo.
+- No cambiar de seccion automaticamente.
 
-## Tono De UI
+El error debe aparecer en consola con prefijo `EXCEL NO CARGADO` y el Excel no debe poblar filtros ni resumen.
 
-El texto debe ser directo y operativo.
+## Resumen
 
-Usar:
+El bloque `Revision` muestra:
 
-- `Importar Excel`
-- `Elegir destino por lote`
-- `Crear, aplicar y cerrar talla seleccionada`
-- `Validar muestras de documento`
-- `Sin Excel seleccionado`
-- `Pendiente`
+- Modo.
+- Filas o alcance actual.
+- Styles activos.
+- Tallas activas; en Genericas debe comunicar que no aplica.
 
-Evitar:
+No usar este bloque para explicaciones largas. El detalle pertenece a la consola.
 
-- Textos largos explicando funcionalidades dentro de la UI.
-- Copys tipo marketing.
-- Mensajes ambiguos como `Continuar` cuando la accion real es especifica.
+## Validacion Incremental
 
-## Reglas UX Para CEP De Produccion
+`Validar` es una operacion de lectura. No genera, imprime ni registra.
 
-- El operador siempre debe ver que selecciono antes de procesar.
-- Rutas largas deben usar monospace y permitir wrap.
-- Los errores no deben tumbar el panel completo; deben aparecer en log.
-- Las acciones destructivas o de sobreescritura deben pedir confirmacion.
-- Las acciones que pueden duplicar PDFs o registros de BD deben mostrar validacion previa.
-- Los flujos manual y batch deben mantenerse separados.
-- Los estados de batch deben incluir conteo de OK, errores y tiempo.
-- No hardcodear rutas nuevas en archivos de coordinacion UI como `js/app.js`; usar configuracion o helpers.
+Estados obligatorios:
 
-## Manual Vs Batch
-
-El flujo manual existe para pedidos individuales y pruebas controladas.
-El flujo batch existe para produccion desde Excel.
-
-No mezclar comportamiento entre ambos sin una razon clara.
-
-## Validacion De Lotes Existentes
-
-Para `RMC MockupTool`, el flujo batch debe considerar que el Excel `Por lote` puede cambiar despues de que ya se generaron PDFs. La UI debe soportar una revision previa antes de generar:
-
-- `Esperados`: grupos consolidados segun Excel, filtros por style/talla y modo activo.
-- `FALTANTE`: no existe PDF exacto y la clave no esta registrada; es lo unico que debe generar el flujo seguro.
-- `YA_CREADO`: existe PDF exacto y la clave esta registrada en SQLite.
-- `ARCHIVO_SIN_REGISTRO`: existe PDF exacto en disco pero falta el item en SQLite; requiere backfill o revision.
-- `REGISTRADO_SIN_ARCHIVO`: la clave existe en SQLite pero el PDF exacto ya no esta en la carpeta elegida.
-- `CONFLICTO`: claves o archivos destino duplicados dentro del Excel filtrado.
-
-Reglas de interfaz:
-
-- Mostrar estos conteos en el panel de revision o log antes de generar.
-- El operador debe poder entender si se hara una generacion completa o parcial.
-- El comportamiento seguro debe ser `solo FALTANTE`.
-- Si hay `CONFLICTO`, detener la generacion y mostrar ejemplos.
-- No generar ni registrar items durante la accion `Validar`; validar primero, generar despues.
-- Mantener los filtros por style/talla como fuente del alcance de la validacion.
-- En impresion, mostrar el orden real de envio a cola y mantener el orden invertido cuando se busque que la pila fisica quede como el Excel.
-
-Reglas de BD para items:
-
-- `rmc_mockuptool_runs.id` debe ser TEXT generado por el CEP en formato `AAAAMMDD-HHMMSS`, igual que `rmcop_nike_runs.id`.
-- `rmc_mockuptool_items.run_id` debe apuntar a ese mismo valor textual.
-- `rmc_mockuptool_items` debe seguir el orden operativo de `rmcop_nike_items`.
-- `archivo` debe guardar solo el nombre del PDF, no rutas completas.
-- `run_id` debe verse como `AAAAMMDD-HHMMSS`.
-- `tiempo` debe usarse como duracion o marcador operativo, por ejemplo `00:00:00`; no mezclar fecha y hora aqui.
-- Mantener `clave` como base anti-duplicados.
-
-## Variantes RMCOp-Nike
-
-Reglas heredadas de `RMCOp-Nike` que otros chats deben respetar cuando trabajen con ese flujo o con un CEP derivado:
-
-- `Standard`: texto.
-- `Throwback`: texto con sufijo `TB`; no es Indigenous Heritage.
-- `Indigenous Heritage`: numero armado con arte/raster; conservar gap obligatorio de `0.25in` entre digitos.
-
-## Metricas Auditables
-
-Estas metricas convierten el manifiesto en una revision objetiva antes de cerrar cambios de UI.
-
-| Area | Criterio | Umbral |
+| Estado | Significado visual | Severidad |
 | --- | --- | --- |
-| Ancho compacto | El panel no debe desbordar horizontalmente. | Funcional desde `280px`. |
-| Densidad | Controles principales deben mantenerse compactos. | Botones/inputs entre `30px` y `34px` de alto. |
-| Foco | Todo control interactivo debe mostrar foco visible. | Borde u outline con `--focus`. |
-| Accion principal | Cada pantalla debe tener una accion primaria clara. | Identificable en menos de 2 segundos. |
-| Logs | El estado debe quedar dentro del panel. | Scroll interno, monospace, sin romper layout. |
-| Rutas | Rutas largas deben seguir siendo legibles. | Wrap o scroll horizontal controlado; sin overflow de pagina. |
-| Batch | El operador debe ver resultado y alcance. | OK, errores/faltantes, seleccionados y salida visibles. |
-| Validacion | El operador debe ver existentes/faltantes antes de regenerar. | Conteos y primeros casos visibles. |
-| Manual/Batch | Los flujos no deben mezclarse accidentalmente. | Tabs, pasos o secciones separadas. |
-| Cards | No crear decoracion innecesaria. | 0 cards anidadas; cards solo para grupos accionables. |
-| Texto UI | El copy debe ser operacional. | Sin marketing, sin parrafos explicativos largos. |
+| `FALTANTE` | No hay archivo ni clave | Accionable |
+| `YA_CREADO` | Archivo y clave existen | Correcto |
+| `ARCHIVO_SIN_REGISTRO` | Archivo sin item SQLite | Warning |
+| `REGISTRADO_SIN_ARCHIVO` | Item SQLite sin archivo | Warning |
+| `CONFLICTO` | Clave o destino duplicado | Error bloqueante |
 
-## Prompt Para Otro Chat
+La consola debe mostrar:
 
-Puedes pegar esto en otro chat:
+- Seccion y fecha de embarque.
+- Filas Excel, seleccionadas y grupos consolidados.
+- Conteo de cada estado.
+- Styles y tallas aplicables.
+- Salida calculada.
+- Primeros estados y primeros conflictos.
 
-```text
-Analiza el archivo RMC_CEP_UI_UX_MANIFEST.md y crea una interfaz CEP con estetica RMC similar.
-El patron visual viene de RMCOp-Nike, pero adapta nombres, rutas y comportamiento al repo actual:
+Reglas:
 
-- Tema oscuro compacto.
-- Paleta basada en variables CSS del manifiesto y del `css/styles.css` existente.
-- Interfaz de produccion, no landing page.
-- Navegacion por pasos.
-- Botones primarios rojos, foco amarillo, logs monospace.
-- Inputs compactos y legibles.
-- Cards solo para elementos repetidos o accionables.
-- Respetar flujos separados: manual, batch, rutas/logs.
-- Texto corto, operativo y claro.
-- No usar heroes, gradientes decorativos ni UI de marketing.
+- Generar solamente `FALTANTE`.
+- Si no hay faltantes, informar y terminar sin registrar corrida.
+- Si existe `CONFLICTO`, bloquear generacion.
+- Las inconsistencias archivo/BD se muestran como warning y no se regeneran automaticamente.
+- Cambiar Excel, salida, modo o filtros invalida la validacion.
+- `Generar PDFs` vuelve a validar antes de escribir.
 
-Antes de implementar, revisa el CSS existente del proyecto y copia sus patrones de espaciado, radios, botones, formularios, timers, logs y tarjetas.
-No mezcles repos: si el repo actual es RMC MockupTool, conserva su identidad funcional aunque use la estetica heredada de RMCOp-Nike.
-```
+## Generacion
 
-## Checklist Visual
+Al terminar, la consola debe indicar:
 
-Antes de cerrar cualquier nuevo CEP:
+- Seccion y fecha de embarque.
+- Filas Excel, seleccionadas y grupos consolidados.
+- Faltantes validados.
+- PDFs generados y mockups faltantes.
+- Items registrados.
+- Styles y tallas.
+- Disenador y salida.
+- Ruta de BD y log JSON.
+- Primeros archivos generados.
 
-- Los textos caben en botones y cards.
-- El foco de teclado se ve.
-- El panel funciona en ancho compacto.
-- Los logs se leen sin romper layout.
-- Las rutas largas no desbordan.
-- El paso activo es evidente.
-- La accion principal de cada pantalla se identifica en menos de 2 segundos.
-- No hay cards dentro de cards.
-- No hay decoracion innecesaria.
+No ocultar errores de historial: el PDF puede haberse generado aunque SQLite falle, por lo que el warning debe ser visible.
+
+## Nombres Y Carpetas
+
+La UI y sus mensajes deben reflejar estas reglas:
+
+- Personalizadas: carpeta `Personalizadas`, archivo iniciado por WO.
+- Genericas: carpeta `Genericas`, archivo iniciado por Roster.
+- Genericas no lleva WO al inicio del archivo.
+- Ambas se separan por nombre de Excel y familia de Style.
+- Personalizadas agrega carpeta de talla.
+- Genericas agrega carpeta de fecha `Emb`.
+- El destino mostrado es la raiz seleccionada; el log debe mostrar la salida calculada completa.
+
+## Fecha De Embarque
+
+- Es distinta de fecha/hora de proceso.
+- Se presenta y registra como `DD/MM`.
+- Personalizadas obtiene el valor del titulo del Excel.
+- Genericas obtiene el valor de `Emb`.
+- Si existen varias fechas, el run puede mostrar una lista; cada item conserva la propia.
+- Nunca mostrar formatos mezclados como `17-JUN` y `17-Jul` en BD o resumen normalizado.
+
+## Impresion
+
+`Revisar cola` debe mostrar orden, coincidencia, faltantes y duplicados sin ejecutar `lp`.
+
+`Imprimir cola` debe:
+
+- Recalcular la cola.
+- Bloquear si no hay PDFs.
+- Mostrar confirmacion con cantidad y warnings.
+- Explicar que se envia de abajo hacia arriba para ordenar la pila como el Excel.
+- Usar `landscape` y `fit-to-page`.
+- Reportar enviados y fallidos.
+
+Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base y se informa la cantidad de candidatos.
+
+## Consola
+
+- Siempre visible debajo del flujo.
+- Monospace entre `10px` y `11px`.
+- Scroll interno.
+- Boton `Limpiar` afecta solo la vista.
+- Errores en rojo, warnings en amarillo y exito en verde.
+- Limitar lineas en memoria para no degradar el panel.
+- No usar alerts para validaciones normales; reservar confirmacion modal para imprimir.
+
+## Estado Y Errores
+
+- Sin Node: mostrar `Sin Node` y deshabilitar acciones.
+- Error de lectura: mantener panel vivo y escribir detalle en consola.
+- Firma SVG sin PNG/JPG: error explicito.
+- Mockup no resuelto: continuar con otros items y contarlo como faltante.
+- Fallo SQLite: mostrar warning sin fingir que el item quedo registrado.
+- Fallo `lp`: listar archivo y error.
+
+## Contrato SQLite Visible Desde UI
+
+- Herramientas: `RMC MockupTool Personalizada` y `RMC MockupTool Genericas`.
+- Secciones: `Personalizadas` y `Genericas`.
+- Run ID: `AAAAMMDD-HHMMSS`.
+- Fecha de proceso: `DD/MM/AAAA`.
+- Hora: `HH:MM:SS`.
+- Fecha de embarque: `DD/MM`.
+- `archivo`: nombre, no ruta completa.
+- `clave`: identificador antiduplicado.
+- No tocar tablas `rmcop_nike_*`.
+
+## Accesibilidad Operativa
+
+- Todo control debe tener foco visible con `--focus`.
+- Botones de icono requieren tooltip y nombre accesible.
+- Labels deben estar asociados con sus controles.
+- No depender solo del color para distinguir estado; incluir texto.
+- Los textos deben caber sin solaparse en el minimo declarado.
+- El orden de tabulacion debe seguir el flujo visual.
+
+## Metricas De Revision
+
+| Area | Criterio |
+| --- | --- |
+| Seccion | Activa evidente y sin etiquetas antiguas |
+| Excel | Codigo validado antes de cargar |
+| Destino | Elegido manualmente y visible |
+| Filtros | Styles/tallas coherentes con el modo |
+| Validacion | Cinco estados y conteos visibles |
+| Generacion | Solo faltantes, conflictos bloqueados |
+| Nombres | WO para Personalizadas, Roster para Genericas |
+| Fecha | `fecha_embarque` visible como `DD/MM` |
+| Historial | BD/log reportados o warning explicito |
+| Impresion | Preview, confirmacion, orden y errores visibles |
+| Compacto | Sin overflow en `420px` de ancho |
+| Cards | Cero cards anidadas |
+| Texto | Operativo, corto y sin marketing |
+
+## Checklist Antes De Cerrar Cambios
+
+- Probar Personalizadas con nombre OD valido e invalido.
+- Probar Genericas con ST/IH/TB/AS valido e invalido.
+- Confirmar que cambiar modo o filtros invalida la validacion.
+- Confirmar que `Validar` no modifica disco ni SQLite.
+- Confirmar conteos de los cinco estados.
+- Confirmar que un conflicto bloquea `Generar PDFs`.
+- Confirmar nombres y carpetas de ambos modos.
+- Confirmar `fecha_embarque` como `DD/MM` en runs e items.
+- Confirmar preview de impresion antes de ejecutar `lp`.
+- Ejecutar `npm run check`.
+- Revisar layout en ancho minimo y tamano inicial.
+- Actualizar `README.md` si cambia logica, esquema, nombres o rutas.

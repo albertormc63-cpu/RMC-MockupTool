@@ -47,7 +47,8 @@ function recordItems(runId, items) {
       sqlValue(item.estado),
       sqlValue(item.error || ""),
       sqlValue(item.tiempo || "00:00:00"),
-      sqlValue(item.clave)
+      sqlValue(item.clave),
+      sqlValue(item.fechaEmbarque || item.fecha_embarque)
     ].join(", ");
   }).map(function (value) {
     return `(${value})`;
@@ -71,7 +72,8 @@ function recordItems(runId, items) {
       estado,
       error,
       tiempo,
-      clave
+      clave,
+      fecha_embarque
     ) VALUES
     ${values}
     ON CONFLICT(clave) DO UPDATE SET
@@ -90,7 +92,8 @@ function recordItems(runId, items) {
       archivo = excluded.archivo,
       estado = excluded.estado,
       error = excluded.error,
-      tiempo = excluded.tiempo;
+      tiempo = excluded.tiempo,
+      fecha_embarque = excluded.fecha_embarque;
   `);
 
   return items.length;
@@ -127,7 +130,7 @@ function writeRunLog(run, createdAt) {
 
   const fileName = [
     formatTimestampForFile(createdAt.toISOString()),
-    run.mode === "samples" ? "genericas" : "por-lote",
+    run.mode === "samples" ? "genericas" : "personalizadas",
     sanitizeFilePart(run.excelName || "excel")
   ].filter(Boolean).join("_") + ".json";
   const logPath = path.join(LOG_DIR, fileName);
@@ -165,6 +168,7 @@ function ensureDatabase() {
   `);
   ensureRunsTable();
   ensureItemsTable();
+  standardizeHistoricalData();
 }
 
 function ensureRunsTable() {
@@ -212,7 +216,9 @@ function getExpectedRunsColumns() {
     "id",
     "fecha",
     "hora",
+    "fecha_embarque",
     "seccion",
+    "herramienta",
     "excel",
     "disenador",
     "filas_excel",
@@ -231,7 +237,9 @@ function createRunsTable() {
       id TEXT PRIMARY KEY,
       fecha TEXT NOT NULL,
       hora TEXT NOT NULL,
+      fecha_embarque TEXT,
       seccion TEXT NOT NULL,
+      herramienta TEXT,
       excel TEXT,
       disenador TEXT,
       filas_excel INTEGER NOT NULL DEFAULT 0,
@@ -297,7 +305,8 @@ function getExpectedItemsColumns() {
     "estado",
     "error",
     "tiempo",
-    "clave"
+    "clave",
+    "fecha_embarque"
   ];
 }
 
@@ -321,7 +330,8 @@ function createItemsTable() {
       estado TEXT,
       error TEXT,
       tiempo TEXT,
-      clave TEXT UNIQUE
+      clave TEXT UNIQUE,
+      fecha_embarque TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_mockuptool_items_run_id
@@ -339,77 +349,103 @@ function createItemsTable() {
 }
 
 function rebuildItemsTable() {
+  const oldColumns = getItemsTableColumns();
+  const tableExists = oldColumns.length > 0;
+
   runSql(`
     DROP INDEX IF EXISTS idx_mockuptool_items_run_id;
     DROP INDEX IF EXISTS idx_mockuptool_items_wo;
     DROP INDEX IF EXISTS idx_mockuptool_items_style;
     DROP INDEX IF EXISTS idx_mockuptool_items_estado;
-    DROP TABLE IF EXISTS rmc_mockuptool_items;
   `);
+
+  if (!tableExists) {
+    createItemsTable();
+    return;
+  }
+
+  runSql("ALTER TABLE rmc_mockuptool_items RENAME TO rmc_mockuptool_items_old;");
   createItemsTable();
+
+  runSql(`
+    INSERT INTO rmc_mockuptool_items (
+      id,
+      run_id,
+      herramienta,
+      fila_excel,
+      wo,
+      ship_order,
+      style,
+      style_family,
+      equipo,
+      variante,
+      version,
+      talla,
+      piezas,
+      archivo,
+      estado,
+      error,
+      tiempo,
+      clave,
+      fecha_embarque
+    )
+    SELECT
+      ${oldColumnExpr(oldColumns, "id", "NULL")},
+      ${oldColumnExpr(oldColumns, "run_id", "''")},
+      ${oldColumnExpr(oldColumns, "herramienta", "NULL")},
+      ${oldColumnExpr(oldColumns, "fila_excel", "NULL")},
+      ${oldColumnExpr(oldColumns, "wo", "NULL")},
+      ${oldColumnExpr(oldColumns, "ship_order", "NULL")},
+      ${oldColumnExpr(oldColumns, "style", "NULL")},
+      ${oldColumnExpr(oldColumns, "style_family", "NULL")},
+      ${oldColumnExpr(oldColumns, "equipo", "NULL")},
+      ${oldColumnExpr(oldColumns, "variante", "NULL")},
+      ${oldColumnExpr(oldColumns, "version", "NULL")},
+      ${oldColumnExpr(oldColumns, "talla", "NULL")},
+      ${oldColumnExpr(oldColumns, "piezas", "1")},
+      ${oldColumnExpr(oldColumns, "archivo", "NULL")},
+      ${oldColumnExpr(oldColumns, "estado", "NULL")},
+      ${oldColumnExpr(oldColumns, "error", "NULL")},
+      ${oldColumnExpr(oldColumns, "tiempo", "'00:00:00'")},
+      ${oldColumnExpr(oldColumns, "clave", "NULL")},
+      COALESCE(${oldColumnExpr(oldColumns, "fecha_embarque", "NULL")}, (
+        SELECT fecha_embarque
+        FROM rmc_mockuptool_runs
+        WHERE rmc_mockuptool_runs.id = ${oldColumnExpr(oldColumns, "run_id", "''")}
+      ))
+    FROM rmc_mockuptool_items_old;
+
+    DROP TABLE rmc_mockuptool_items_old;
+  `);
 }
 
 function rebuildRunsTable() {
   const oldColumns = getRunsTableColumns();
-  const hasCleanColumns = oldColumns.indexOf("fecha") !== -1 && oldColumns.indexOf("hora") !== -1;
+  const hasTable = oldColumns.length > 0;
 
   runSql(`
     DROP INDEX IF EXISTS idx_mockuptool_runs_created_at;
     DROP INDEX IF EXISTS idx_mockuptool_runs_mode;
     DROP INDEX IF EXISTS idx_mockuptool_runs_fecha_hora;
     DROP INDEX IF EXISTS idx_mockuptool_runs_seccion;
-
-    ALTER TABLE rmc_mockuptool_runs RENAME TO rmc_mockuptool_runs_old;
   `);
-  createRunsTable();
 
-  if (hasCleanColumns) {
-    runSql(`
-      INSERT INTO rmc_mockuptool_runs (
-        id,
-        fecha,
-        hora,
-        seccion,
-        excel,
-        disenador,
-        filas_excel,
-        filas_seleccionadas,
-        grupos_consolidados,
-        pdfs_generados,
-        mockups_faltantes,
-        styles,
-        tallas
-      )
-      SELECT
-        CASE
-          WHEN typeof(id) = 'text' AND id <> '' THEN id
-          ELSE substr(fecha, 7, 4) || substr(fecha, 4, 2) || substr(fecha, 1, 2) || '-' || replace(hora, ':', '')
-        END,
-        fecha,
-        hora,
-        seccion,
-        excel,
-        disenador,
-        filas_excel,
-        filas_seleccionadas,
-        grupos_consolidados,
-        pdfs_generados,
-        mockups_faltantes,
-        styles,
-        tallas
-      FROM rmc_mockuptool_runs_old;
-
-      DROP TABLE rmc_mockuptool_runs_old;
-    `);
+  if (!hasTable) {
+    createRunsTable();
     return;
   }
+
+  runSql("ALTER TABLE rmc_mockuptool_runs RENAME TO rmc_mockuptool_runs_old;");
+  createRunsTable();
 
   runSql(`
       INSERT INTO rmc_mockuptool_runs (
         id,
         fecha,
         hora,
+        fecha_embarque,
         seccion,
+        herramienta,
         excel,
         disenador,
         filas_excel,
@@ -421,23 +457,171 @@ function rebuildRunsTable() {
         tallas
       )
       SELECT
-        strftime('%Y%m%d-%H%M%S', created_at),
-        strftime('%d/%m/%Y', created_at),
-        strftime('%H:%M:%S', created_at),
-        section_label,
-        excel_name,
-        designer,
-        total_rows,
-        selected_rows,
-        consolidated_rows,
-        pdfs_generated,
-        missing_mockups,
-        trim(replace(replace(replace(styles_json, '[', ''), ']', ''), '"', '')),
-        trim(replace(replace(replace(sizes_json, '[', ''), ']', ''), '"', ''))
+        ${buildRunIdExpr(oldColumns)},
+        ${oldColumnExpr(oldColumns, "fecha", "strftime('%d/%m/%Y', created_at)")},
+        ${oldColumnExpr(oldColumns, "hora", "strftime('%H:%M:%S', created_at)")},
+        ${oldColumnExpr(oldColumns, "fecha_embarque", "NULL")},
+        ${oldColumnExpr(oldColumns, "seccion", oldColumnExpr(oldColumns, "section_label", "''"))},
+        ${oldColumnExpr(oldColumns, "herramienta", "NULL")},
+        ${oldColumnExpr(oldColumns, "excel", oldColumnExpr(oldColumns, "excel_name", "NULL"))},
+        ${oldColumnExpr(oldColumns, "disenador", oldColumnExpr(oldColumns, "designer", "NULL"))},
+        ${oldColumnExpr(oldColumns, "filas_excel", oldColumnExpr(oldColumns, "total_rows", "0"))},
+        ${oldColumnExpr(oldColumns, "filas_seleccionadas", oldColumnExpr(oldColumns, "selected_rows", "0"))},
+        ${oldColumnExpr(oldColumns, "grupos_consolidados", oldColumnExpr(oldColumns, "consolidated_rows", "0"))},
+        ${oldColumnExpr(oldColumns, "pdfs_generados", oldColumnExpr(oldColumns, "pdfs_generated", "0"))},
+        ${oldColumnExpr(oldColumns, "mockups_faltantes", oldColumnExpr(oldColumns, "missing_mockups", "0"))},
+        ${oldColumnExpr(oldColumns, "styles", oldColumns.indexOf("styles_json") !== -1 ? "trim(replace(replace(replace(styles_json, '[', ''), ']', ''), '\"', ''))" : "NULL")},
+        ${oldColumnExpr(oldColumns, "tallas", oldColumns.indexOf("sizes_json") !== -1 ? "trim(replace(replace(replace(sizes_json, '[', ''), ']', ''), '\"', ''))" : "NULL")}
       FROM rmc_mockuptool_runs_old;
 
       DROP TABLE rmc_mockuptool_runs_old;
     `);
+}
+
+function oldColumnExpr(columns, columnName, fallback) {
+  return columns.indexOf(columnName) !== -1 ? columnName : fallback;
+}
+
+function buildRunIdExpr(columns) {
+  if (columns.indexOf("id") !== -1 && columns.indexOf("fecha") !== -1 && columns.indexOf("hora") !== -1) {
+    return `
+      CASE
+        WHEN typeof(id) = 'text' AND id <> '' THEN id
+        ELSE substr(fecha, 7, 4) || substr(fecha, 4, 2) || substr(fecha, 1, 2) || '-' || replace(hora, ':', '')
+      END
+    `;
+  }
+
+  if (columns.indexOf("created_at") !== -1) {
+    return "strftime('%Y%m%d-%H%M%S', created_at)";
+  }
+
+  return "strftime('%Y%m%d-%H%M%S', 'now', 'localtime')";
+}
+
+function standardizeHistoricalData() {
+  const runRows = runSql(`
+    SELECT id, COALESCE(seccion, ''), COALESCE(herramienta, ''), COALESCE(excel, ''), COALESCE(fecha_embarque, '')
+    FROM rmc_mockuptool_runs;
+  `, { capture: true }).trim().split("\n").filter(Boolean);
+
+  runRows.forEach(function (line) {
+    const parts = line.split("|");
+    const id = parts[0] || "";
+    const section = standardizeSectionLabel(parts[1]);
+    const tool = standardizeToolLabel(parts[2], section);
+    const excelName = parts[3] || "";
+    const fechaEmbarque = normalizeFechaEmbarque(parts[4] || inferFechaEmbarqueFromText(excelName));
+
+    runSql(`
+      UPDATE rmc_mockuptool_runs
+      SET
+        seccion = ${sqlValue(section)},
+        herramienta = ${sqlValue(tool)},
+        fecha_embarque = ${sqlValue(fechaEmbarque)}
+      WHERE id = ${sqlValue(id)};
+
+      UPDATE rmc_mockuptool_items
+      SET
+        herramienta = ${sqlValue(tool)},
+        fecha_embarque = COALESCE(fecha_embarque, ${sqlValue(fechaEmbarque)})
+      WHERE run_id = ${sqlValue(id)};
+    `);
+  });
+
+  runSql(`
+    UPDATE rmc_mockuptool_items
+    SET herramienta = 'RMC MockupTool Personalizada'
+    WHERE herramienta IN ('RMC MockupTool Por Lote', 'Por lote', 'Por Lote', 'Personalizadas');
+
+    UPDATE rmc_mockuptool_items
+    SET herramienta = 'RMC MockupTool Genericas'
+    WHERE herramienta IN ('Genericas Muestras', 'RMC MockupTool Genericas Muestras', 'Genericas');
+  `);
+
+  const itemDates = runSql(`
+    SELECT DISTINCT COALESCE(fecha_embarque, '')
+    FROM rmc_mockuptool_items
+    WHERE COALESCE(fecha_embarque, '') <> '';
+  `, { capture: true }).trim().split("\n").filter(Boolean);
+
+  itemDates.forEach(function (storedDate) {
+    const normalizedDate = normalizeFechaEmbarque(storedDate);
+    if (normalizedDate && normalizedDate !== storedDate) {
+      runSql(`
+        UPDATE rmc_mockuptool_items
+        SET fecha_embarque = ${sqlValue(normalizedDate)}
+        WHERE fecha_embarque = ${sqlValue(storedDate)};
+      `);
+    }
+  });
+}
+
+function standardizeSectionLabel(value) {
+  const text = cleanUpper(value);
+  if (text === "GENERICAS MUESTRAS" || text === "GENERICAS/MUESTRAS" || text === "GENERICAS") return "Genericas";
+  if (text === "POR LOTE" || text === "PORLOTE" || text === "PERSONALIZADAS") return "Personalizadas";
+  return value || "Personalizadas";
+}
+
+function standardizeToolLabel(value, section) {
+  const text = cleanUpper(value);
+  if (text.indexOf("GENERICA") !== -1 || cleanUpper(section) === "GENERICAS") return "RMC MockupTool Genericas";
+  if (text.indexOf("POR LOTE") !== -1 || text.indexOf("PERSONALIZADA") !== -1 || cleanUpper(section) === "PERSONALIZADAS") {
+    return "RMC MockupTool Personalizada";
+  }
+  return value || "RMC MockupTool Personalizada";
+}
+
+function inferFechaEmbarqueFromText(value) {
+  const text = String(value || "");
+  const match = text.match(/\b(\d{1,2})[\s._/-]+([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\b/);
+  return match ? normalizeFechaEmbarque(`${match[1]} ${match[2]}`) : "";
+}
+
+function normalizeFechaEmbarque(value) {
+  const dateParts = clean(value).split(",").map(function (part) { return part.trim(); }).filter(Boolean);
+  if (dateParts.length > 1) {
+    return Array.from(new Set(dateParts.map(normalizeFechaEmbarque).filter(Boolean))).join(", ");
+  }
+
+  const normalized = cleanUpper(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[._]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  const numericMatch = normalized.match(/\b(\d{1,2})[-/\s]+(\d{1,2})(?:[-/\s]+\d{2,4})?\b/);
+  const textMatch = normalized.match(/\b(\d{1,2})[-/\s]+([A-Z]+)\b/);
+
+  if (numericMatch) {
+    const monthNumber = Number(numericMatch[2]);
+    if (monthNumber >= 1 && monthNumber <= 12) {
+      return `${String(Number(numericMatch[1])).padStart(2, "0")}/${String(monthNumber).padStart(2, "0")}`;
+    }
+  }
+
+  if (!textMatch) return normalized;
+
+  const monthMap = {
+    ENE: 1, ENERO: 1, JAN: 1, JANUARY: 1,
+    FEB: 2, FEBRERO: 2, FEBRUARY: 2,
+    MAR: 3, MARZO: 3, MARCH: 3,
+    ABR: 4, ABRIL: 4, APR: 4, APRIL: 4,
+    MAY: 5, MAYO: 5,
+    JUN: 6, JUNIO: 6, JUNE: 6,
+    JUL: 7, JULIO: 7, JULY: 7,
+    AGO: 8, AGOSTO: 8, AUG: 8, AUGUST: 8,
+    SEP: 9, SEPT: 9, SEPTIEMBRE: 9, SEPTEMBER: 9,
+    OCT: 10, OCTUBRE: 10, OCTOBER: 10,
+    NOV: 11, NOVIEMBRE: 11, NOVEMBER: 11,
+    DIC: 12, DICIEMBRE: 12, DEC: 12, DECEMBER: 12
+  };
+  const month = monthMap[textMatch[2]] || monthMap[textMatch[2].slice(0, 3)];
+
+  return month
+    ? `${String(Number(textMatch[1])).padStart(2, "0")}/${String(month).padStart(2, "0")}`
+    : normalized;
 }
 
 function insertRun(run, createdAt, runId) {
@@ -446,7 +630,9 @@ function insertRun(run, createdAt, runId) {
       id,
       fecha,
       hora,
+      fecha_embarque,
       seccion,
+      herramienta,
       excel,
       disenador,
       filas_excel,
@@ -460,7 +646,9 @@ function insertRun(run, createdAt, runId) {
       ${sqlValue(runId)},
       ${sqlValue(formatDate(createdAt))},
       ${sqlValue(formatTime(createdAt))},
+      ${sqlValue(run.fechaEmbarque || run.fecha_embarque)},
       ${sqlValue(run.sectionLabel)},
+      ${sqlValue(run.herramienta || "")},
       ${sqlValue(run.excelName)},
       ${sqlValue(run.designer)},
       ${sqlNumber(run.totalRows)},
@@ -499,6 +687,15 @@ function sqlValue(value) {
 function sqlNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? String(number) : "0";
+}
+
+function clean(value) {
+  if (value == null) return "";
+  return String(value).trim().replace(/\s+/g, " ");
+}
+
+function cleanUpper(value) {
+  return clean(value).toUpperCase();
 }
 
 function formatTimestampForFile(value) {

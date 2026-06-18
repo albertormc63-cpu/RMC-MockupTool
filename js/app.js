@@ -128,6 +128,14 @@
 
     if (!selectedPath) return;
 
+    if (target.id === "excelPath") {
+      const modeValidation = runtime.generate.validateExcelMode(selectedPath, getSelectedMode());
+      if (!modeValidation.valid) {
+        setLog("EXCEL NO CARGADO:\n" + modeValidation.message, "log-warning");
+        return;
+      }
+    }
+
     target.value = selectedPath;
     markValidationStale();
     updateSummary();
@@ -191,6 +199,13 @@
     resetFilterUi();
 
     if (!runtime.ready || !excelPathInput.value) return;
+
+    const modeValidation = runtime.generate.validateExcelMode(excelPathInput.value, getSelectedMode());
+    if (!modeValidation.valid) {
+      setLog("EXCEL NO CARGADO:\n" + modeValidation.message, "log-warning");
+      updateSummary({ rows: "0" });
+      return;
+    }
 
     setLog("Leyendo Excel...");
     updateSummary({ rows: "..." });
@@ -361,6 +376,7 @@
       setLog([
         "Terminado.",
         "Seccion: " + getModeLabel(),
+        result.fechaEmbarque ? "Fecha embarque: " + result.fechaEmbarque : "",
         "Filas Excel: " + result.totalRows,
         "Filas seleccionadas: " + result.selectedRows,
         "Grupos consolidados: " + result.rows,
@@ -536,6 +552,7 @@
     return [
       title,
       "Seccion: " + getModeLabel(),
+      result.fechaEmbarque ? "Fecha embarque: " + result.fechaEmbarque : "",
       "Filas Excel: " + result.totalRows,
       "Filas seleccionadas: " + result.selectedRows,
       "Grupos consolidados: " + result.rows,
@@ -577,6 +594,7 @@
     return [
       title,
       "Seccion: " + getModeLabel(),
+      result.fechaEmbarque ? "Fecha embarque: " + result.fechaEmbarque : "",
       "Filas Excel: " + result.totalRows,
       "Filas seleccionadas: " + result.selectedRows,
       "Grupos en orden: " + result.rows,
@@ -671,7 +689,7 @@
   }
 
   function getModeLabel() {
-    return getSelectedMode() === "samples" ? "Genericas" : "Por lote";
+    return getSelectedMode() === "samples" ? "Genericas" : "Personalizadas";
   }
 
   function updateSummary(overrides) {
