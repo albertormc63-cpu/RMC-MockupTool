@@ -29,6 +29,8 @@ No usar `Por lote`, `Genericas Muestras` ni `RMC MockupTool Por Lote` en registr
 
 El destino nunca se decide automaticamente. El operador elige la raiz; el CEP agrega la seccion, el nombre del Excel y las carpetas operativas.
 
+Al cambiar entre Personalizadas y Genericas, el CEP limpia el Excel seleccionado, los filtros y la validacion en memoria. Conserva la salida, el disenador y las rutas tecnicas para dejar lista la carga del Excel correspondiente a la nueva seccion.
+
 ## Validacion Del Nombre Del Excel
 
 Los codigos se reconocen como tokens aislados, no como fragmentos dentro de otras palabras.
@@ -102,7 +104,9 @@ Si no se puede resolver linea, equipo, variante o version Standard, no existe un
 
 - Los filtros de Style trabajan por familia, por ejemplo `A1000`.
 - Las tallas se muestran solamente en Personalizadas y dependen de las familias seleccionadas.
-- Cambiar Excel, seccion, destino, Style o talla invalida la validacion previa.
+- En Personalizadas, el filtro de talla selecciona el pedido consolidado completo, no una fila aislada.
+- Si un pedido contiene `2XL-XLG`, seleccionar `2XL` o `XLG` conserva ambas filas y usa la plantilla `2XL-XLG`.
+- Cambiar Excel, destino, Style o talla invalida la validacion previa. Cambiar de seccion, ademas, limpia el Excel y los filtros cargados.
 - La validacion vigente se identifica por Excel, destino, modo y filtros.
 
 Personalizadas consolida por:
@@ -112,6 +116,10 @@ Ship Order + WO + Style + Color/Equipo
 ```
 
 Suma piezas y combina tallas diferentes en el orden encontrado, por ejemplo `XLG-LGE`. El grupo consolidado produce un PDF.
+
+La consolidacion ocurre antes del filtro de talla. Nunca generar una plantilla separada por talla cuando Ship Order, WO, Style y Color/Equipo identifican el mismo pedido multitalle.
+
+Los logs de validacion, generacion e impresion muestran `Pedidos multitalle consolidados` para distinguir estos grupos validos de un `CONFLICTO` real.
 
 Genericas consolida por:
 
@@ -197,6 +205,14 @@ Reglas importantes:
 
 Un conflicto aparece si dos grupos producen la misma `clave` o el mismo archivo destino.
 
+La impresion se revisa como una dimension independiente del estado de generacion:
+
+- `IMPRESO`: la clave existe y `impreso=1`.
+- `NO IMPRESO`: existe PDF y registro, pero `impreso=0`.
+- `SIN REGISTRO`: no existe item donde guardar el estado de impresion.
+
+La validacion muestra totales de `IMPRESOS` y `PENDIENTES DE IMPRESION`. Esta bandera nunca convierte un item en `FALTANTE` ni provoca que se regenere el PDF.
+
 `Generar PDFs` siempre vuelve a validar. Si no hay faltantes, la UI termina sin crear corrida. Si existen faltantes, procesa solamente esos grupos. Un mockup base ausente se reporta y no crea item SQLite.
 
 ## Claves Antiduplicado
@@ -266,7 +282,7 @@ Orden de columnas:
 ```text
 id, run_id, herramienta, fila_excel, wo, ship_order, style, style_family,
 equipo, variante, version, talla, piezas, archivo, estado, error, tiempo,
-clave, fecha_embarque
+clave, fecha_embarque, impreso
 ```
 
 - `id` es INTEGER autoincremental.
@@ -274,6 +290,10 @@ clave, fecha_embarque
 - `archivo` guarda solo el nombre del PDF, no la ruta completa.
 - `tiempo` usa `HH:MM:SS`; actualmente los items generados usan `00:00:00`.
 - `clave` es la base de validacion y tiene restriccion `UNIQUE`.
+- `impreso` es INTEGER restringido a `0/1`: `0` pendiente y `1` enviado correctamente a la cola de impresion.
+- Los registros existentes antes de incorporar esta columna se migran como `impreso=1` por instruccion operativa.
+- Los PDFs nuevos se registran con `impreso=0`.
+- Un upsert conserva `impreso=1`; nunca lo baja accidentalmente a `0`.
 
 Al iniciar una operacion de historial, `ensureDatabase()` crea o migra solamente las tablas de MockupTool, normaliza etiquetas historicas y convierte fechas de embarque antiguas al formato vigente.
 
@@ -303,9 +323,15 @@ Busqueda:
 - Personalizadas usa WO.
 - Genericas intenta Roster y WO.
 - Se restringe a la familia de Style; Personalizadas tambien restringe la carpeta de talla.
+- Para pedidos multitalle, la carpeta candidata debe contener exactamente el mismo conjunto de tallas; una carpeta individual no sustituye a la combinada.
+- Un pedido consolidado se agrega una sola vez a la cola, aunque provenga de varias filas del Excel.
 - Si existen `archivo.pdf` y `archivo 2.pdf`, se prefiere el nombre base y se reporta duplicidad.
 
 `Imprimir cola` pide confirmacion y ejecuta `lp` por cada PDF. Usa la impresora predeterminada de macOS, `fit-to-page`, `landscape` y orden inverso al Excel para que la pila fisica quede en el orden visual del Excel.
+
+La revision y confirmacion indican cuantos items ya tienen `impreso=1`. La herramienta permite reenviarlos si el operador confirma. Cada `lp` exitoso marca la clave correspondiente con `impreso=1`; un fallo de `lp` no la marca. Si SQLite falla despues de enviar, el log muestra un warning separado.
+
+`impreso=1` significa que `lp`/macOS acepto el trabajo en la cola. No confirma por si solo que la impresora haya expulsado fisicamente el papel.
 
 ## Interfaz
 
@@ -355,7 +381,7 @@ npm install
 npm run check
 ```
 
-`npm run check` valida sintaxis de `src/generate.js`, `src/history.js` y `js/app.js`.
+`npm run check` valida sintaxis de `src/generate.js`, `src/history.js` y `js/app.js`, y ejecuta la regresion de consolidacion multitalle en `tests/consolidation.test.js`.
 
 El comando `npm run generate` ejecuta el motor por CLI con rutas predeterminadas. Opciones soportadas:
 
@@ -383,5 +409,8 @@ git@github.com:albertormc63-cpu/RMC-MockupTool.git
 - No agregar WO al inicio de archivos Genericas.
 - No quitar WO al inicio de archivos Personalizadas.
 - Guardar `fecha_embarque` como `DD/MM`.
+- Crear items nuevos con `impreso=0` y marcar `1` solamente despues de un envio `lp` exitoso.
+- No usar `impreso` para decidir si un PDF debe regenerarse; esa decision pertenece a archivo + `clave`.
+- Consolidar pedidos multitalle antes de aplicar el filtro de talla y mandar solamente la plantilla combinada a impresion.
 - Mantener tablas y nombres de RMCOp-Nike intactos.
 - Documentar aqui cualquier cambio de columnas, clave, carpetas, nombres, coordenadas o impresion.

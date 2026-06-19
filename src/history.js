@@ -44,11 +44,13 @@ function recordItems(runId, items) {
       sqlValue(item.talla || item.size),
       sqlNumber(item.piezas),
       sqlValue(toFileName(item.archivo)),
+      sqlValue(item.path || item.archivo),
       sqlValue(item.estado),
       sqlValue(item.error || ""),
       sqlValue(item.tiempo || "00:00:00"),
       sqlValue(item.clave),
-      sqlValue(item.fechaEmbarque || item.fecha_embarque)
+      sqlValue(item.fechaEmbarque || item.fecha_embarque),
+      sqlNumber(item.impreso ? 1 : 0)
     ].join(", ");
   }).map(function (value) {
     return `(${value})`;
@@ -69,11 +71,13 @@ function recordItems(runId, items) {
       talla,
       piezas,
       archivo,
+      path,
       estado,
       error,
       tiempo,
       clave,
-      fecha_embarque
+      fecha_embarque,
+      impreso
     ) VALUES
     ${values}
     ON CONFLICT(clave) DO UPDATE SET
@@ -90,10 +94,15 @@ function recordItems(runId, items) {
       talla = excluded.talla,
       piezas = excluded.piezas,
       archivo = excluded.archivo,
+      path = excluded.path,
       estado = excluded.estado,
       error = excluded.error,
       tiempo = excluded.tiempo,
-      fecha_embarque = excluded.fecha_embarque;
+      fecha_embarque = excluded.fecha_embarque,
+      impreso = CASE
+        WHEN excluded.impreso = 1 THEN 1
+        ELSE COALESCE(rmc_mockuptool_items.impreso, 0)
+      END;
   `);
 
   return items.length;
@@ -107,7 +116,7 @@ function getItemRecordsByClaves(claves) {
 
   const values = uniqueClaves.map(sqlValue).join(", ");
   const result = runSql(`
-    SELECT clave || char(9) || COALESCE(archivo, '') || char(9) || COALESCE(estado, '')
+    SELECT clave || char(9) || COALESCE(archivo, '') || char(9) || COALESCE(path, '') || char(9) || COALESCE(estado, '') || char(9) || COALESCE(impreso, 0)
     FROM rmc_mockuptool_items
     WHERE clave IN (${values});
   `, { capture: true });
@@ -118,11 +127,30 @@ function getItemRecordsByClaves(claves) {
     records[parts[0]] = {
       clave: parts[0],
       archivo: parts[1] || "",
-      estado: parts[2] || ""
+      path: parts[2] || "",
+      estado: parts[3] || "",
+      impreso: Number(parts[4] || 0) === 1
     };
   });
 
   return records;
+}
+
+function markItemsPrinted(claves) {
+  ensureDatabase();
+
+  const uniqueClaves = Array.from(new Set((claves || []).filter(Boolean)));
+  if (!uniqueClaves.length) return 0;
+
+  const values = uniqueClaves.map(sqlValue).join(", ");
+  const result = runSql(`
+    UPDATE rmc_mockuptool_items
+    SET impreso = 1
+    WHERE clave IN (${values});
+    SELECT changes();
+  `, { capture: true });
+
+  return Number(result.trim().split("\n").filter(Boolean).pop() || 0);
 }
 
 function writeRunLog(run, createdAt) {
@@ -220,6 +248,8 @@ function getExpectedRunsColumns() {
     "seccion",
     "herramienta",
     "excel",
+    "excel_path",
+    "path",
     "disenador",
     "filas_excel",
     "filas_seleccionadas",
@@ -241,6 +271,8 @@ function createRunsTable() {
       seccion TEXT NOT NULL,
       herramienta TEXT,
       excel TEXT,
+      excel_path TEXT,
+      path TEXT,
       disenador TEXT,
       filas_excel INTEGER NOT NULL DEFAULT 0,
       filas_seleccionadas INTEGER NOT NULL DEFAULT 0,
@@ -302,11 +334,13 @@ function getExpectedItemsColumns() {
     "talla",
     "piezas",
     "archivo",
+    "path",
     "estado",
     "error",
     "tiempo",
     "clave",
-    "fecha_embarque"
+    "fecha_embarque",
+    "impreso"
   ];
 }
 
@@ -327,11 +361,13 @@ function createItemsTable() {
       talla TEXT,
       piezas INTEGER DEFAULT 1,
       archivo TEXT,
+      path TEXT,
       estado TEXT,
       error TEXT,
       tiempo TEXT,
       clave TEXT UNIQUE,
-      fecha_embarque TEXT
+      fecha_embarque TEXT,
+      impreso INTEGER NOT NULL DEFAULT 0 CHECK (impreso IN (0, 1))
     );
 
     CREATE INDEX IF NOT EXISTS idx_mockuptool_items_run_id
@@ -345,6 +381,9 @@ function createItemsTable() {
 
     CREATE INDEX IF NOT EXISTS idx_mockuptool_items_estado
       ON rmc_mockuptool_items(estado);
+
+    CREATE INDEX IF NOT EXISTS idx_mockuptool_items_impreso
+      ON rmc_mockuptool_items(impreso);
   `);
 }
 
@@ -357,6 +396,7 @@ function rebuildItemsTable() {
     DROP INDEX IF EXISTS idx_mockuptool_items_wo;
     DROP INDEX IF EXISTS idx_mockuptool_items_style;
     DROP INDEX IF EXISTS idx_mockuptool_items_estado;
+    DROP INDEX IF EXISTS idx_mockuptool_items_impreso;
   `);
 
   if (!tableExists) {
@@ -383,11 +423,13 @@ function rebuildItemsTable() {
       talla,
       piezas,
       archivo,
+      path,
       estado,
       error,
       tiempo,
       clave,
-      fecha_embarque
+      fecha_embarque,
+      impreso
     )
     SELECT
       ${oldColumnExpr(oldColumns, "id", "NULL")},
@@ -404,6 +446,7 @@ function rebuildItemsTable() {
       ${oldColumnExpr(oldColumns, "talla", "NULL")},
       ${oldColumnExpr(oldColumns, "piezas", "1")},
       ${oldColumnExpr(oldColumns, "archivo", "NULL")},
+      ${oldColumnExpr(oldColumns, "path", "NULL")},
       ${oldColumnExpr(oldColumns, "estado", "NULL")},
       ${oldColumnExpr(oldColumns, "error", "NULL")},
       ${oldColumnExpr(oldColumns, "tiempo", "'00:00:00'")},
@@ -412,7 +455,8 @@ function rebuildItemsTable() {
         SELECT fecha_embarque
         FROM rmc_mockuptool_runs
         WHERE rmc_mockuptool_runs.id = ${oldColumnExpr(oldColumns, "run_id", "''")}
-      ))
+      )),
+      ${oldColumnExpr(oldColumns, "impreso", "1")}
     FROM rmc_mockuptool_items_old;
 
     DROP TABLE rmc_mockuptool_items_old;
@@ -447,6 +491,8 @@ function rebuildRunsTable() {
         seccion,
         herramienta,
         excel,
+        excel_path,
+        path,
         disenador,
         filas_excel,
         filas_seleccionadas,
@@ -464,6 +510,8 @@ function rebuildRunsTable() {
         ${oldColumnExpr(oldColumns, "seccion", oldColumnExpr(oldColumns, "section_label", "''"))},
         ${oldColumnExpr(oldColumns, "herramienta", "NULL")},
         ${oldColumnExpr(oldColumns, "excel", oldColumnExpr(oldColumns, "excel_name", "NULL"))},
+        ${oldColumnExpr(oldColumns, "excel_path", "NULL")},
+        ${oldColumnExpr(oldColumns, "path", "NULL")},
         ${oldColumnExpr(oldColumns, "disenador", oldColumnExpr(oldColumns, "designer", "NULL"))},
         ${oldColumnExpr(oldColumns, "filas_excel", oldColumnExpr(oldColumns, "total_rows", "0"))},
         ${oldColumnExpr(oldColumns, "filas_seleccionadas", oldColumnExpr(oldColumns, "selected_rows", "0"))},
@@ -634,6 +682,8 @@ function insertRun(run, createdAt, runId) {
       seccion,
       herramienta,
       excel,
+      excel_path,
+      path,
       disenador,
       filas_excel,
       filas_seleccionadas,
@@ -650,6 +700,8 @@ function insertRun(run, createdAt, runId) {
       ${sqlValue(run.sectionLabel)},
       ${sqlValue(run.herramienta || "")},
       ${sqlValue(run.excelName)},
+      ${sqlValue(run.excelPath)},
+      ${sqlValue(run.outputRoot || run.path)},
       ${sqlValue(run.designer)},
       ${sqlNumber(run.totalRows)},
       ${sqlNumber(run.selectedRows)},
@@ -752,6 +804,7 @@ module.exports = {
   SOURCE_APP,
   ensureDatabase,
   getItemRecordsByClaves,
+  markItemsPrinted,
   recordItems,
   recordRun
 };

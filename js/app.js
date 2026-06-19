@@ -83,10 +83,7 @@
     modeInputs.forEach((input) => {
       input.addEventListener("change", () => {
         syncModeTabs();
-        markValidationStale();
         resetExcelState();
-        updateSummary();
-        if (excelPathInput.value) analyzeExcel();
       });
     });
 
@@ -238,9 +235,14 @@
 
   function resetExcelState() {
     markValidationStale();
+    excelPathInput.value = "";
     excelSummary = null;
+    allStyles.checked = true;
+    allSizes.checked = true;
     resetFilterUi();
-    updateSummary();
+    syncCheckVisuals();
+    setLog("Seccion: " + getModeLabel() + ".\nSelecciona el Excel correspondiente.");
+    updateSummary({ rows: "0" });
   }
 
   function resetFilterUi() {
@@ -380,6 +382,7 @@
         "Filas Excel: " + result.totalRows,
         "Filas seleccionadas: " + result.selectedRows,
         "Grupos consolidados: " + result.rows,
+        "Pedidos multitalle consolidados: " + (result.pedidosMultitalle || 0),
         "Faltantes validados: " + (result.rowsToGenerate || 0),
         "PDFs generados: " + result.ok,
         "Mockups faltantes: " + result.missing,
@@ -449,7 +452,8 @@
 
       const warnings = [
         preview.missing ? "Faltantes: " + preview.missing : "",
-        preview.duplicates ? "Duplicados detectados: " + preview.duplicates : ""
+        preview.duplicates ? "Duplicados detectados: " + preview.duplicates : "",
+        preview.yaImpresos ? "Ya marcados como impresos: " + preview.yaImpresos : ""
       ].filter(Boolean).join("\n");
 
       const message = [
@@ -463,7 +467,7 @@
 
       setLog("Mandando PDFs a la cola de impresion...");
       const result = runtime.generate.submitPrintQueue(options);
-      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates ? "log-warning" : "";
+      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates || result.printHistoryWarning ? "log-warning" : "";
       setLog(formatPrintQueueLog(result, "Cola enviada a impresion."), statusClass);
       updateSummary({
         rows: result.submitted || 0,
@@ -556,11 +560,14 @@
       "Filas Excel: " + result.totalRows,
       "Filas seleccionadas: " + result.selectedRows,
       "Grupos consolidados: " + result.rows,
+      "Pedidos multitalle consolidados: " + (result.pedidosMultitalle || 0),
       "FALTANTE: " + result.faltantes,
       "YA_CREADO: " + result.yaCreados,
       "ARCHIVO_SIN_REGISTRO: " + result.archivosSinRegistro,
       "REGISTRADO_SIN_ARCHIVO: " + result.registradosSinArchivo,
       "CONFLICTO: " + result.conflictos,
+      "IMPRESOS: " + result.impresos,
+      "PENDIENTES DE IMPRESION: " + result.pendientesImpresion,
       "Styles: " + (result.styles || []).join(", "),
       getSelectedMode() === "samples" ? "" : "Tallas: " + (result.sizes || []).join(", "),
       "Salida: " + result.out,
@@ -576,6 +583,7 @@
   function formatValidationItem(item) {
     return [
       item.estado,
+      item.registroExiste ? (item.impreso ? "IMPRESO" : "NO IMPRESO") : "SIN REGISTRO",
       item.clave || "SIN CLAVE",
       item.style || "SIN STYLE",
       item.size || "SIN TALLA",
@@ -586,7 +594,7 @@
 
   function getValidationLogClass(result) {
     if (result.conflictos) return "log-error";
-    if (result.archivosSinRegistro || result.registradosSinArchivo) return "log-warning";
+    if (result.archivosSinRegistro || result.registradosSinArchivo || result.pendientesImpresion) return "log-warning";
     return "";
   }
 
@@ -598,9 +606,14 @@
       "Filas Excel: " + result.totalRows,
       "Filas seleccionadas: " + result.selectedRows,
       "Grupos en orden: " + result.rows,
+      "Pedidos multitalle consolidados: " + (result.pedidosMultitalle || 0),
       "Orden impresion: " + (result.printOrderLabel || ""),
       "PDFs en cola: " + result.printable,
+      "Ya marcados impresos: " + (result.yaImpresos || 0),
+      "Pendientes de impresion: " + (result.pendientesImpresion || 0),
       result.submitted != null ? "Mandados a cola: " + result.submitted : "",
+      result.itemsMarcadosImpresos != null ? "Items marcados impresos: " + result.itemsMarcadosImpresos : "",
+      result.printHistoryWarning ? "Aviso historial impresion: " + result.printHistoryWarning : "",
       result.failed ? "Errores de impresion: " + result.failed : "",
       result.printOptions ? "Opciones lp: " + result.printOptions.join(", ") : "",
       "Faltantes: " + result.missing,
@@ -630,6 +643,7 @@
       item.key || "SIN CLAVE",
       item.style || "SIN STYLE",
       item.size || "SIN TALLA",
+      item.registroExiste ? (item.impreso ? "IMPRESO" : "NO IMPRESO") : "SIN REGISTRO",
       item.match,
       item.path
     ].join(" | ");

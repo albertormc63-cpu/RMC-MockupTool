@@ -109,7 +109,7 @@ Evitar gradientes decorativos, orbes, ilustraciones de marketing y paletas domin
 
 - Control segmentado con `Personalizadas` y `Genericas`.
 - La opcion activa debe distinguirse con `--accent`.
-- El cambio de seccion invalida la validacion y vuelve a analizar el Excel seleccionado.
+- El cambio de seccion invalida la validacion, limpia el Excel seleccionado y reinicia los filtros; no reutiliza ni vuelve a analizar el archivo anterior.
 - No usar las etiquetas antiguas `Por lote` o `Genericas Muestras`.
 
 ### Selectores
@@ -133,7 +133,10 @@ Select con:
 - `Todos` debe reflejar el estado real del grupo.
 - Tallas se muestran solamente en Personalizadas.
 - Las tallas disponibles se recalculan segun Styles activos.
+- Seleccionar una talla incluye el pedido consolidado completo cuando comparte Ship Order, WO, Style y equipo con otras tallas.
+- Un pedido multitalle debe mostrarse y procesarse una sola vez con su talla combinada, por ejemplo `2XL-XLG`.
 - Cambiar un filtro invalida la validacion incremental.
+- Cambiar de seccion limpia el Excel y restablece Style/tallas a `Todos`, dejando lista la seleccion del archivo correcto.
 
 ### Acciones
 
@@ -188,6 +191,8 @@ La consola debe mostrar:
 - Seccion y fecha de embarque.
 - Filas Excel, seleccionadas y grupos consolidados.
 - Conteo de cada estado.
+- Conteos separados de impresos y pendientes de impresion.
+- Conteo de pedidos multitalle consolidados; no presentarlos como `CONFLICTO`.
 - Styles y tallas aplicables.
 - Salida calculada.
 - Primeros estados y primeros conflictos.
@@ -198,6 +203,7 @@ Reglas:
 - Si no hay faltantes, informar y terminar sin registrar corrida.
 - Si existe `CONFLICTO`, bloquear generacion.
 - Las inconsistencias archivo/BD se muestran como warning y no se regeneran automaticamente.
+- `impreso` es informativo para impresion y no modifica el estado de generacion.
 - Cambiar Excel, salida, modo o filtros invalida la validacion.
 - `Generar PDFs` vuelve a validar antes de escribir.
 
@@ -242,14 +248,22 @@ La UI y sus mensajes deben reflejar estas reglas:
 
 `Revisar cola` debe mostrar orden, coincidencia, faltantes y duplicados sin ejecutar `lp`.
 
+Tambien debe mostrar `IMPRESO`, `NO IMPRESO` o `SIN REGISTRO` por item, junto con los totales ya impresos y pendientes.
+
+Para pedidos multitalle, la cola debe usar exclusivamente el PDF consolidado. No aceptar como reemplazo un PDF ubicado en una carpeta de talla individual y no repetir el pedido por cada fila original.
+
 `Imprimir cola` debe:
 
 - Recalcular la cola.
 - Bloquear si no hay PDFs.
 - Mostrar confirmacion con cantidad y warnings.
+- Advertir cuantos PDFs ya estaban marcados como impresos; permitir reenvio solamente despues de la confirmacion existente.
 - Explicar que se envia de abajo hacia arriba para ordenar la pila como el Excel.
 - Usar `landscape` y `fit-to-page`.
 - Reportar enviados y fallidos.
+- Marcar `impreso=1` unicamente para claves cuyo comando `lp` termino correctamente.
+
+En UI, `impreso` significa enviado correctamente a la cola de macOS, no confirmacion fisica del papel. Un fallo al actualizar SQLite despues del envio debe mostrarse como warning independiente.
 
 Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base y se informa la cantidad de candidatos.
 
@@ -282,6 +296,7 @@ Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base 
 - Fecha de embarque: `DD/MM`.
 - `archivo`: nombre, no ruta completa.
 - `clave`: identificador antiduplicado.
+- `impreso`: INTEGER `0/1`; nuevos items inician en `0`, items aceptados por `lp` pasan a `1`.
 - No tocar tablas `rmcop_nike_*`.
 
 ## Accesibilidad Operativa
@@ -305,6 +320,7 @@ Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base 
 | Generacion | Solo faltantes, conflictos bloqueados |
 | Nombres | WO para Personalizadas, Roster para Genericas |
 | Fecha | `fecha_embarque` visible como `DD/MM` |
+| Impresion | Estado impreso separado de la validacion de generacion |
 | Historial | BD/log reportados o warning explicito |
 | Impresion | Preview, confirmacion, orden y errores visibles |
 | Compacto | Sin overflow en `420px` de ancho |
@@ -322,6 +338,8 @@ Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base 
 - Confirmar nombres y carpetas de ambos modos.
 - Confirmar `fecha_embarque` como `DD/MM` en runs e items.
 - Confirmar preview de impresion antes de ejecutar `lp`.
+- Confirmar que un `lp` exitoso marca `impreso=1` y uno fallido conserva `0`.
+- Confirmar que filtrar una talla de un pedido multitalle conserva todas sus tallas y produce una sola entrada de cola.
 - Ejecutar `npm run check`.
 - Revisar layout en ancho minimo y tamano inicial.
 - Actualizar `README.md` si cambia logica, esquema, nombres o rutas.

@@ -843,8 +843,9 @@ function buildSelectedJob(options) {
   }
 
   const excel = options.excelBuffer ? readExcelBuffer(options.excelBuffer, mode) : readExcel(options.excel, mode);
-  const filteredRows = filterRows(excel.rows, options);
-  const consolidatedRows = mode === MODE_SAMPLES ? consolidateSampleRows(filteredRows) : consolidateRows(filteredRows);
+  const selection = selectJobRows(excel.rows, options, mode);
+  const filteredRows = selection.filteredRows;
+  const consolidatedRows = selection.consolidatedRows;
   const rows = options.limit > 0 ? consolidatedRows.slice(0, options.limit) : consolidatedRows;
   const sectionName = mode === MODE_SAMPLES ? SECTION_SAMPLES : SECTION_BULK;
   const outputRoot = getSectionOutputRoot(options.out, sectionName, excelName);
@@ -882,6 +883,7 @@ function validateMockups(options) {
     item.archivoExiste = fileExists;
     item.registroExiste = !!dbRecord;
     item.archivoRegistrado = dbRecord ? dbRecord.archivo : "";
+    item.impreso = dbRecord ? dbRecord.impreso : false;
 
     if (duplicatedKey || duplicatedPath) {
       item.estado = STATE_CONFLICT;
@@ -909,6 +911,10 @@ function validateMockups(options) {
   });
 
   const counts = countBy(items.map(function (item) { return item.estado; }));
+  const impresos = items.filter(function (item) { return item.registroExiste && item.impreso; }).length;
+  const pendientesImpresion = items.filter(function (item) {
+    return item.estado === STATE_CREATED && !item.impreso;
+  }).length;
 
   return {
     mode: job.mode,
@@ -921,12 +927,15 @@ function validateMockups(options) {
     totalRows: job.excel.rows.length,
     selectedRows: job.filteredRows.length,
     rows: job.rows.length,
+    pedidosMultitalle: countMultiSizeOrders(job.rows),
     counts,
     faltantes: counts[STATE_MISSING] || 0,
     yaCreados: counts[STATE_CREATED] || 0,
     archivosSinRegistro: counts[STATE_FILE_WITHOUT_RECORD] || 0,
     registradosSinArchivo: counts[STATE_RECORD_WITHOUT_FILE] || 0,
     conflictos: counts[STATE_CONFLICT] || 0,
+    impresos,
+    pendientesImpresion,
     items,
     styles: uniqueSorted(job.rows.map(function (row) { return getStyleFamily(row.style); })),
     sizes: uniqueSorted(job.rows.map(function (row) { return row.size; }))
@@ -988,6 +997,12 @@ function countBy(values) {
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
+}
+
+function countMultiSizeOrders(rows) {
+  return (rows || []).filter(function (row) {
+    return row.sizes && row.sizes.length > 1;
+  }).length;
 }
 
 async function generateMockups(options) {
@@ -1070,6 +1085,7 @@ async function generateMockups(options) {
     outputs.push(outputPath);
     generatedItems.push(Object.assign({}, validationItem, {
       archivo: outputPath,
+      path: outputPath,
       estado: STATE_CREATED,
       error: ""
     }));
@@ -1094,6 +1110,7 @@ async function generateMockups(options) {
     signaturePath,
     out: outputRoot,
     rows: rows.length,
+    pedidosMultitalle: countMultiSizeOrders(rows),
     rowsToGenerate: rowsToGenerate.length,
     selectedRows: filteredRows.length,
     totalRows: excel.rows.length,
@@ -1169,12 +1186,7 @@ function consolidateRows(rows) {
   const groups = new Map();
 
   rows.forEach(function (row) {
-    const key = [
-      row.shipOrder,
-      row.wo,
-      row.style,
-      cleanUpper(row.color)
-    ].join("||");
+    const key = buildBulkGroupKey(row);
     const existing = groups.get(key);
 
     if (!existing) {
@@ -1204,6 +1216,52 @@ function consolidateRows(rows) {
   });
 }
 
+function buildBulkGroupKey(row) {
+  return [
+    row.shipOrder,
+    row.wo,
+    row.style,
+    cleanUpper(row.color)
+  ].join("||");
+}
+
+function selectJobRows(rows, options, mode) {
+  if (mode === MODE_SAMPLES) {
+    const filteredRows = filterRows(rows, options);
+    return {
+      filteredRows,
+      consolidatedRows: consolidateSampleRows(filteredRows)
+    };
+  }
+
+  // Un filtro de talla selecciona el pedido completo. Consolidar primero evita
+  // crear una plantilla individual cuando el mismo pedido contiene varias tallas.
+  const styleFilteredRows = filterRows(rows, Object.assign({}, options, { sizes: [] }));
+  const allConsolidatedRows = consolidateRows(styleFilteredRows);
+  const selectedSizes = new Set((options.sizes || []).map(cleanUpper).filter(Boolean));
+  const consolidatedRows = allConsolidatedRows.filter(function (row) {
+    if (selectedSizes.size === 0) return true;
+    if (selectedSizes.has(cleanUpper(row.size))) return true;
+    return (row.sizes || []).some(function (size) {
+      return selectedSizes.has(cleanUpper(size));
+    });
+  });
+  const selectedSourceRows = new Set();
+
+  consolidatedRows.forEach(function (row) {
+    (row.sourceRows || [row.sourceRow]).forEach(function (sourceRow) {
+      selectedSourceRows.add(sourceRow);
+    });
+  });
+
+  return {
+    filteredRows: styleFilteredRows.filter(function (row) {
+      return selectedSourceRows.has(row.sourceRow);
+    }),
+    consolidatedRows
+  };
+}
+
 function normalizeQty(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 1;
@@ -1224,6 +1282,9 @@ function filterRows(rows, options) {
 function preparePrintQueue(options) {
   const job = buildSelectedJob(options);
   const pdfIndex = indexOutputPdfFiles(job.outputRoot);
+  const dbRecords = history.getItemRecordsByClaves(job.rows.map(function (order) {
+    return buildItemKey(job.mode, order);
+  }));
   const items = [];
   const missingRows = [];
   const duplicateRows = [];
@@ -1231,6 +1292,8 @@ function preparePrintQueue(options) {
   const printOptions = getPrintOptions(options);
 
   job.rows.forEach(function (order, index) {
+    const clave = buildItemKey(job.mode, order);
+    const dbRecord = dbRecords[clave] || null;
     const expectedPath = job.mode === MODE_SAMPLES ? buildSamplesOutputPath(job.outputRoot, order) : buildOutputPath(job.outputRoot, order);
     const candidates = findPrintCandidates(pdfIndex, job.outputRoot, job.mode, order);
     const exactExists = fs.existsSync(expectedPath);
@@ -1266,11 +1329,14 @@ function preparePrintQueue(options) {
       excelOrder: index + 1,
       sourceRow: order.sourceRow,
       sourceRows: order.sourceRows || [order.sourceRow],
+      clave,
       key: getPrintKeys(order, job.mode).join(" / "),
       style: order.style,
       size: order.size,
       qty: order.qty,
       path: chosenPath,
+      impreso: dbRecord ? dbRecord.impreso : false,
+      registroExiste: !!dbRecord,
       match: exactExists ? "exacto" : "por nombre"
     });
   });
@@ -1291,10 +1357,13 @@ function preparePrintQueue(options) {
     totalRows: job.excel.rows.length,
     selectedRows: job.filteredRows.length,
     rows: job.rows.length,
+    pedidosMultitalle: countMultiSizeOrders(job.rows),
     printOrder,
     printOrderLabel: getPrintOrderLabel(printOrder),
     printOptions,
     printable: orderedItems.length,
+    yaImpresos: orderedItems.filter(function (item) { return item.impreso; }).length,
+    pendientesImpresion: orderedItems.filter(function (item) { return item.registroExiste && !item.impreso; }).length,
     missing: missingRows.length,
     duplicates: duplicateRows.length,
     items: orderedItems,
@@ -1311,6 +1380,8 @@ function submitPrintQueue(options) {
   const printOptions = queue.printOptions;
   const printed = [];
   const failed = [];
+  let itemsMarcadosImpresos = 0;
+  let printHistoryWarning = "";
 
   if (queue.items.length === 0) {
     throw new Error("No hay PDFs encontrados para mandar a imprimir.");
@@ -1323,6 +1394,7 @@ function submitPrintQueue(options) {
     if (result.status === 0) {
       printed.push({
         path: item.path,
+        clave: item.clave,
         stdout: clean(result.stdout)
       });
       return;
@@ -1335,11 +1407,19 @@ function submitPrintQueue(options) {
     });
   });
 
+  try {
+    itemsMarcadosImpresos = history.markItemsPrinted(printed.map(function (item) { return item.clave; }));
+  } catch (error) {
+    printHistoryWarning = error.message;
+  }
+
   return Object.assign({}, queue, {
     submitted: printed.length,
     failed: failed.length,
     printer: printer || "default",
     printOptions,
+    itemsMarcadosImpresos,
+    printHistoryWarning,
     printed,
     failedRows: failed
   });
@@ -1450,8 +1530,11 @@ function matchesPrintFolder(outputRoot, filePath, mode, styleFamily, size) {
   if (relativeParts[0] !== styleFamily) return false;
   if (mode === MODE_SAMPLES || !size) return true;
 
-  const sizeFolder = cleanUpper(relativeParts[1]);
-  return sizeFolder.split("-").indexOf(cleanUpper(size)) !== -1;
+  const folderSizes = cleanUpper(relativeParts[1]).split("-").filter(Boolean).sort();
+  const requestedSizes = cleanUpper(size).split("-").filter(Boolean).sort();
+  return folderSizes.length === requestedSizes.length && requestedSizes.every(function (requestedSize, index) {
+    return requestedSize === folderSizes[index];
+  });
 }
 
 function chooseBestPrintCandidate(candidates) {
@@ -1501,6 +1584,7 @@ module.exports = {
   buildMockupPath,
   buildOutputPath,
   buildSamplesOutputPath,
+  selectJobRows,
   generateMockups,
   validateMockups,
   preparePrintQueue,
