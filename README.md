@@ -15,21 +15,46 @@ El CEP trabaja con dos secciones visibles:
 
 No usar `Por lote`, `Genericas Muestras` ni `RMC MockupTool Por Lote` en registros nuevos.
 
-## Flujo Del Operador
+## Flujo De Produccion
+
+El proceso se divide en cinco etapas. Esta separacion evita tratar seleccion, generacion, registro e impresion como una sola operacion.
+
+### 1. Preparacion
 
 1. Abrir `Ventana > Extensiones > RMC MockupTool` en Illustrator.
 2. Elegir `Personalizadas` o `Genericas`.
-3. Seleccionar el Excel. El nombre se valida antes de leerlo.
+3. Seleccionar el Excel; su nombre se valida antes de leerlo.
 4. Seleccionar manualmente la carpeta raiz de salida.
-5. Elegir disenador.
-6. Revisar las familias de Style y, en Personalizadas, las tallas.
-7. Pulsar `Validar` para comparar Excel, archivos y SQLite sin generar nada.
-8. Pulsar `Generar PDFs`. El CEP vuelve a validar y procesa solamente `FALTANTE`.
-9. Usar `Revisar cola` antes de `Imprimir cola` cuando se requiera impresion.
+5. Elegir disenador y filtros de Style/talla.
 
-El destino nunca se decide automaticamente. El operador elige la raiz; el CEP agrega la seccion, el nombre del Excel y las carpetas operativas.
+Esta etapa solamente prepara el trabajo en memoria. El destino nunca se decide automaticamente: el CEP agrega seccion, nombre del Excel y carpetas operativas a la raiz elegida.
 
-Al cambiar entre Personalizadas y Genericas, el CEP limpia el Excel seleccionado, los filtros y la validacion en memoria. Conserva la salida, el disenador y las rutas tecnicas para dejar lista la carga del Excel correspondiente a la nueva seccion.
+### 2. Validacion
+
+`Validar` consolida pedidos y compara cada clave contra el archivo esperado y SQLite. No genera PDFs, no crea corridas y no escribe items.
+
+La validacion es el plan de produccion: clasifica cada pedido como `FALTANTE`, `YA_CREADO`, inconsistente o en conflicto.
+
+### 3. Generacion
+
+`Generar PDFs` vuelve a validar y procesa exclusivamente `FALTANTE`. Cada PDF se escribe primero en su ruta final; si el mockup base falta, ese pedido se reporta y no se registra como generado.
+
+### 4. Registro
+
+Cuando termina una generacion con faltantes:
+
+- Se crea una corrida en `rmc_mockuptool_runs`.
+- Se registra un item por PDF creado correctamente.
+- Se conservan el Excel fuente, la carpeta efectiva de la corrida y la ruta exacta de cada PDF.
+- Se escribe un JSON tecnico de respaldo.
+
+Un fallo de historial no elimina el PDF ya generado; debe mostrarse como warning para reconciliacion posterior.
+
+### 5. Impresion
+
+`Revisar cola` localiza y ordena PDFs sin imprimir. `Imprimir cola` recalcula la cola, pide confirmacion, ejecuta `lp` y marca `impreso=1` solamente para trabajos aceptados por macOS.
+
+Al cambiar entre Personalizadas y Genericas, el CEP limpia Excel, filtros y validacion en memoria. Conserva salida, disenador y rutas tecnicas.
 
 ## Validacion Del Nombre Del Excel
 
@@ -243,7 +268,7 @@ La columna `clave` es `UNIQUE`. Al registrar una clave existente, SQLite actuali
 - Si una corrida de Genericas contiene varias fechas, el run conserva la lista y cada item conserva su fecha propia.
 - No se agrega ano porque `fecha` ya registra el dia de ejecucion con ano.
 
-## SQLite Compartido
+## Sistema De Registros
 
 Base central:
 
@@ -264,7 +289,7 @@ No modificar `rmcop_nike_runs` ni `rmcop_nike_items` desde este CEP.
 Orden de columnas:
 
 ```text
-id, fecha, hora, fecha_embarque, seccion, herramienta, excel, disenador,
+id, fecha, hora, fecha_embarque, seccion, herramienta, excel, excel_path, path, disenador,
 filas_excel, filas_seleccionadas, grupos_consolidados, pdfs_generados,
 mockups_faltantes, styles, tallas
 ```
@@ -274,6 +299,9 @@ mockups_faltantes, styles, tallas
 - `hora`: `HH:MM:SS`.
 - `fecha_embarque`: `DD/MM`.
 - `seccion`: `Personalizadas` o `Genericas`.
+- `excel`: nombre visible del archivo fuente.
+- `excel_path`: ruta completa del Excel seleccionado.
+- `path`: carpeta efectiva de la corrida, incluyendo seccion y Excel sin extension.
 
 ### rmc_mockuptool_items
 
@@ -281,13 +309,14 @@ Orden de columnas:
 
 ```text
 id, run_id, herramienta, fila_excel, wo, ship_order, style, style_family,
-equipo, variante, version, talla, piezas, archivo, estado, error, tiempo,
+equipo, variante, version, talla, piezas, archivo, path, estado, error, tiempo,
 clave, fecha_embarque, impreso
 ```
 
 - `id` es INTEGER autoincremental.
 - `run_id` apunta al ID textual de la corrida.
-- `archivo` guarda solo el nombre del PDF, no la ruta completa.
+- `archivo` guarda solamente el nombre del PDF.
+- `path` guarda la ruta completa y actual del PDF.
 - `tiempo` usa `HH:MM:SS`; actualmente los items generados usan `00:00:00`.
 - `clave` es la base de validacion y tiene restriccion `UNIQUE`.
 - `impreso` es INTEGER restringido a `0/1`: `0` pendiente y `1` enviado correctamente a la cola de impresion.
@@ -297,6 +326,36 @@ clave, fecha_embarque, impreso
 
 Al iniciar una operacion de historial, `ensureDatabase()` crea o migra solamente las tablas de MockupTool, normaliza etiquetas historicas y convierte fechas de embarque antiguas al formato vigente.
 
+### Comportamiento Actual
+
+- `rmc_mockuptool_runs` funciona como bitacora de ejecuciones.
+- `rmc_mockuptool_items` funciona a la vez como detalle de corrida y estado vigente de cada plantilla.
+- `clave UNIQUE` evita duplicados mediante `upsert`.
+- Si una clave vuelve a registrarse, el item existente puede recibir un `run_id` nuevo.
+
+Esta ultima regla mantiene una sola fila vigente por plantilla, pero debilita el historial: una corrida antigua puede dejar de mostrar todos los items que genero. Tambien mezcla el estado de produccion con el estado de impresion dentro del mismo registro.
+
+### Reestructura Recomendada
+
+La siguiente evolucion debe separar cuatro responsabilidades:
+
+| Capa | Responsabilidad | Escritura |
+| --- | --- | --- |
+| `runs` | Contexto inmutable de cada ejecucion | Una fila por intento real |
+| `run_items` | Resultado inmutable de cada pedido dentro de la corrida | Una fila por resultado |
+| `assets` | Estado vigente de la plantilla identificada por `clave` | Upsert controlado |
+| `print_events` | Cada intento de impresion y su resultado | Una fila por envio |
+
+Reglas propuestas:
+
+1. Una corrida cerrada no cambia ni pierde items.
+2. La deduplicacion vive en `assets`, no en el detalle historico.
+3. Imprimir agrega un evento; no reescribe la historia de generacion.
+4. `path`, `estado_actual` y ultima impresion pueden consultarse desde `assets`.
+5. RMC Control Center puede mostrar historial y estado actual sin inferir uno desde el otro.
+
+Esta reestructura requiere migracion y cambios coordinados con Control Center. No forma parte del esquema implementado actualmente.
+
 ## Logs
 
 Cada corrida de generacion escribe un JSON detallado en:
@@ -305,7 +364,7 @@ Cada corrida de generacion escribe un JSON detallado en:
 /Users/rmlsub1/Documents/RMC - CEP/RMC MockupTool portafolio interno/06_Logs
 ```
 
-El nombre incluye timestamp, seccion y Excel. El JSON conserva contexto tecnico que deliberadamente no se agrega como columnas a `rmc_mockuptool_runs`.
+El nombre incluye timestamp, seccion y Excel. El JSON conserva contexto tecnico detallado y sirve para reconciliar SQLite con archivos. Las rutas principales tambien se guardan en las columnas `excel_path` y `path`.
 
 La consola visible del CEP muestra lectura, validacion, primeros estados, archivos generados, faltantes, conflictos, BD y ruta del log. Se puede limpiar sin afectar archivos ni SQLite.
 
@@ -362,6 +421,18 @@ assets/                    Marca visual
 
 El panel requiere Node habilitado dentro de CEP. No usa navegador externo ni servidor local.
 
+La separacion logica deseada para futuras modificaciones es:
+
+```text
+UI                 seleccion, mensajes y acciones
+Produccion         lectura, filtros, consolidacion y plan validado
+PDF                resolucion de mockup y escritura del archivo
+Registros          esquema, corridas, items y reconciliacion
+Impresion          preparacion de cola, envio y eventos de impresion
+```
+
+Actualmente `src/generate.js` concentra Produccion, PDF e Impresion. Al reestructurarlo, conservar estas fronteras y mover comportamiento sin cambiar reglas operativas en la misma ronda.
+
 Dependencias principales:
 
 - `xlsx`
@@ -409,6 +480,8 @@ git@github.com:albertormc63-cpu/RMC-MockupTool.git
 - No agregar WO al inicio de archivos Genericas.
 - No quitar WO al inicio de archivos Personalizadas.
 - Guardar `fecha_embarque` como `DD/MM`.
+- Guardar `excel_path` y la carpeta efectiva en cada corrida nueva.
+- Guardar la ruta completa del PDF en cada item nuevo.
 - Crear items nuevos con `impreso=0` y marcar `1` solamente despues de un envio `lp` exitoso.
 - No usar `impreso` para decidir si un PDF debe regenerarse; esa decision pertenece a archivo + `clave`.
 - Consolidar pedidos multitalle antes de aplicar el filtro de talla y mandar solamente la plantilla combinada a impresion.

@@ -1,6 +1,6 @@
 # RMC CEP UI/UX Manifest
 
-Ultima actualizacion: 2026-06-17.
+Ultima actualizacion: 2026-06-22.
 
 Contrato visual y operativo de `RMC MockupTool`. El panel hereda la identidad de RMCOp-Nike, pero mantiene codigo, textos, rutas y tablas propias.
 
@@ -41,6 +41,22 @@ footer
 ```
 
 El primer viewport debe mostrar el trabajo real, no una portada.
+
+## Flujo Visible
+
+La interfaz debe presentar el proceso en este orden mental:
+
+```text
+Preparar -> Validar -> Generar -> Registrar -> Imprimir
+```
+
+- Preparar define Excel, salida, disenador y filtros.
+- Validar muestra el plan sin escribir archivos ni BD.
+- Generar procesa solamente faltantes.
+- Registrar ocurre automaticamente despues de escribir PDFs.
+- Imprimir es una operacion posterior e independiente.
+
+No mezclar estado de generacion con estado de impresion. Un PDF puede existir y estar registrado aunque siga pendiente de impresion.
 
 ## Paleta
 
@@ -295,6 +311,9 @@ Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base 
 - Hora: `HH:MM:SS`.
 - Fecha de embarque: `DD/MM`.
 - `archivo`: nombre, no ruta completa.
+- `excel_path`: ruta completa del Excel fuente en la corrida.
+- `rmc_mockuptool_runs.path`: carpeta efectiva de la corrida.
+- `rmc_mockuptool_items.path`: ruta completa del PDF.
 - `clave`: identificador antiduplicado.
 - `impreso`: INTEGER `0/1`; nuevos items inician en `0`, items aceptados por `lp` pasan a `1`.
 - No tocar tablas `rmcop_nike_*`.
@@ -322,6 +341,7 @@ Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base 
 | Fecha | `fecha_embarque` visible como `DD/MM` |
 | Impresion | Estado impreso separado de la validacion de generacion |
 | Historial | BD/log reportados o warning explicito |
+| Rutas | Excel, carpeta de corrida y PDF disponibles para Control Center |
 | Impresion | Preview, confirmacion, orden y errores visibles |
 | Compacto | Sin overflow en `420px` de ancho |
 | Cards | Cero cards anidadas |
