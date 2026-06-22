@@ -1378,6 +1378,7 @@ function submitPrintQueue(options) {
   const queue = preparePrintQueue(options);
   const printer = clean(options.printer);
   const printOptions = queue.printOptions;
+  const itemsToPrint = getPendingPrintItems(queue.items);
   const printed = [];
   const failed = [];
   let itemsMarcadosImpresos = 0;
@@ -1387,7 +1388,23 @@ function submitPrintQueue(options) {
     throw new Error("No hay PDFs encontrados para mandar a imprimir.");
   }
 
-  queue.items.forEach(function (item) {
+  if (itemsToPrint.length === 0) {
+    return Object.assign({}, queue, {
+      submitted: 0,
+      failed: 0,
+      printer: printer || "default",
+      printOptions,
+      itemsMarcadosImpresos,
+      printHistoryWarning,
+      omitidosImpresos: queue.yaImpresos,
+      omitidosSinRegistro: queue.items.filter(function (item) { return !item.registroExiste; }).length,
+      sinPendientes: true,
+      printed,
+      failedRows: failed
+    });
+  }
+
+  itemsToPrint.forEach(function (item) {
     const args = buildLpArgs(printer, printOptions, item.path);
     const result = childProcess.spawnSync("lp", args, { encoding: "utf8" });
 
@@ -1407,10 +1424,12 @@ function submitPrintQueue(options) {
     });
   });
 
-  try {
-    itemsMarcadosImpresos = history.markItemsPrinted(printed.map(function (item) { return item.clave; }));
-  } catch (error) {
-    printHistoryWarning = error.message;
+  if (printed.length > 0) {
+    try {
+      itemsMarcadosImpresos = history.markItemsPrinted(printed.map(function (item) { return item.clave; }));
+    } catch (error) {
+      printHistoryWarning = error.message;
+    }
   }
 
   return Object.assign({}, queue, {
@@ -1420,8 +1439,17 @@ function submitPrintQueue(options) {
     printOptions,
     itemsMarcadosImpresos,
     printHistoryWarning,
+    omitidosImpresos: queue.yaImpresos,
+    omitidosSinRegistro: queue.items.filter(function (item) { return !item.registroExiste; }).length,
+    sinPendientes: false,
     printed,
     failedRows: failed
+  });
+}
+
+function getPendingPrintItems(items) {
+  return (items || []).filter(function (item) {
+    return item.registroExiste && !item.impreso;
   });
 }
 
@@ -1589,6 +1617,7 @@ module.exports = {
   validateMockups,
   preparePrintQueue,
   submitPrintQueue,
+  getPendingPrintItems,
   history,
   readExcel,
   readExcelBuffer,

@@ -445,19 +445,36 @@
 
       const options = getJobOptions(selectedFilters);
       const preview = runtime.generate.preparePrintQueue(options);
+      const pendingItems = runtime.generate.getPendingPrintItems(preview.items);
+      const withoutRecordCount = (preview.items || []).filter((item) => !item.registroExiste).length;
 
       if (!preview.printable) {
         throw new Error("No hay PDFs encontrados para imprimir.");
       }
 
+      if (pendingItems.length === 0) {
+        setLog([
+          "No hay PDFs pendientes de impresion.",
+          "Ya impresos omitidos: " + (preview.yaImpresos || 0),
+          "SIN REGISTRO omitidos: " + withoutRecordCount,
+          "No se envio ningun archivo a lp."
+        ].join("\n"), "log-warning");
+        updateSummary({
+          rows: 0,
+          filters: selectedFilters
+        });
+        return;
+      }
+
       const warnings = [
         preview.missing ? "Faltantes: " + preview.missing : "",
         preview.duplicates ? "Duplicados detectados: " + preview.duplicates : "",
-        preview.yaImpresos ? "Ya marcados como impresos: " + preview.yaImpresos : ""
+        preview.yaImpresos ? "Se omitiran por impreso=1: " + preview.yaImpresos : "",
+        withoutRecordCount ? "SIN REGISTRO (omitidos): " + withoutRecordCount : ""
       ].filter(Boolean).join("\n");
 
       const message = [
-        "Mandar " + preview.printable + " PDFs a la impresora predeterminada?",
+        "Mandar " + pendingItems.length + " PDFs pendientes a la impresora predeterminada?",
         warnings,
         "Se mandaran de abajo hacia arriba para que la pila quede como el Excel.",
         "Opciones: horizontal y ajustar a pagina."
@@ -465,9 +482,9 @@
 
       if (!window.confirm(message)) return;
 
-      setLog("Mandando PDFs a la cola de impresion...");
+      setLog("Mandando " + pendingItems.length + " PDFs pendientes a la cola de impresion...");
       const result = runtime.generate.submitPrintQueue(options);
-      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates || result.printHistoryWarning ? "log-warning" : "";
+      const statusClass = result.failed ? "log-error" : result.missing || result.duplicates || result.printHistoryWarning || result.omitidosImpresos || result.omitidosSinRegistro ? "log-warning" : "";
       setLog(formatPrintQueueLog(result, "Cola enviada a impresion."), statusClass);
       updateSummary({
         rows: result.submitted || 0,
@@ -612,6 +629,8 @@
       "Ya marcados impresos: " + (result.yaImpresos || 0),
       "Pendientes de impresion: " + (result.pendientesImpresion || 0),
       result.submitted != null ? "Mandados a cola: " + result.submitted : "",
+      result.omitidosImpresos != null ? "Omitidos por impreso=1: " + result.omitidosImpresos : "",
+      result.omitidosSinRegistro != null ? "SIN REGISTRO omitidos: " + result.omitidosSinRegistro : "",
       result.itemsMarcadosImpresos != null ? "Items marcados impresos: " + result.itemsMarcadosImpresos : "",
       result.printHistoryWarning ? "Aviso historial impresion: " + result.printHistoryWarning : "",
       result.failed ? "Errores de impresion: " + result.failed : "",
