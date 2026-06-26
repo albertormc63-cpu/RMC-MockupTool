@@ -20,10 +20,10 @@ const FONT_COLOR = rgb(0x31 / 255, 0x27 / 255, 0x83 / 255);
 const DATE_COLOR = rgb(0xa9 / 255, 0x1e / 255, 0x2f / 255);
 
 const DEFAULT_EXCEL = "/Volumes/Fullsize/TO PRINT/LISTAS ON DEMAND/NIKE OD 12 JUNIO.xlsx";
-const DEFAULT_MOCKUPS = "/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/MOCKUPS";
+const DEFAULT_MOCKUPS = "/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/ASSETS/MOCKUPS";
 const DEFAULT_OUT = "/Volumes/Fullsize/TO PRINT/NIKE ORDERS/LISTAS ON DEMAND";
 const DEFAULT_ALDRICH_FONT = "/Users/rmlsub1/Library/Fonts/Aldrich-Regular.ttf";
-const DEFAULT_SIGNATURES_DIR = "/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/FIRMAS";
+const DEFAULT_SIGNATURES_DIR = "/Volumes/Fullsize/PATRONES ACOMODADOS PARA ROLLO/NIKE LACROSSE/RMCOp-NIKE/ASSETS/FIRMAS";
 const DEFAULT_PRINT_OPTIONS = ["fit-to-page", "landscape"];
 const PRINT_ORDER_EXCEL = "excel";
 const PRINT_ORDER_STACK = "stack";
@@ -155,7 +155,7 @@ function validateExcelMode(excelPath, mode) {
     return new RegExp(`(^|[^A-Z0-9])${token}([^A-Z0-9]|$)`).test(normalizedName);
   };
   const hasOd = hasToken("OD");
-  const genericCodes = ["ST", "IH", "TB", "AS"].filter(hasToken);
+  const genericCodes = ["ST", "IH", "TB", "AS", "SS"].filter(hasToken);
   const selectedMode = normalizeMode(mode);
   let detectedMode = "";
 
