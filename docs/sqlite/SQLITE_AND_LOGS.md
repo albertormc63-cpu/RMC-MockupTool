@@ -14,6 +14,19 @@ Tablas propias:
 
 No modificar `rmcop_nike_runs`, `rmcop_nike_items` ni otras tablas `rmcop_nike_*` desde este CEP.
 
+## Catalogo Compartido De Variantes
+
+`rmc_nike_style_variants` es una tabla compartida de catalogo. Este CEP la lee para reconocer variantes activas de Genericas y resolver disenos especiales.
+
+Columnas de mockup agregadas con autorizacion operativa:
+
+- `mockup_folder`: carpeta relativa dentro de la raiz de mockups.
+- `mockup_file_pattern`: nombre exacto o patron del asset base.
+- `mockup_source_type`: tipo disponible (`pdf` o `jpg`).
+- `mockup_status`: estado operativo, por ejemplo `ready_pdf`, `pattern_pdf` o `image_only`.
+
+El generador actual solo puede anotar PDFs base. Las variantes con `mockup_source_type='jpg'` se reconocen como catalogo, pero no se generan hasta tener PDF base o un flujo explicito de conversion.
+
 ## Herramientas Y Secciones
 
 | Seccion | Herramienta SQLite |

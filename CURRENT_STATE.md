@@ -13,7 +13,7 @@ Es repo hermano de `RMCOp-Nike`, pero no comparte código, tablas ni reglas de e
 | UI               | Modo interno | Excel válido                  | Herramienta SQLite             |
 | ---------------- | ------------ | ----------------------------- | ------------------------------ |
 | `Personalizadas` | `bulk`       | token `OD`                    | `RMC MockupTool Personalizada` |
-| `Genericas`      | `samples`    | tokens `ST`, `IH`, `TB`, `AS` | `RMC MockupTool Genericas`     |
+| `Genericas`      | `samples`    | token `ST` + variantes activas de `rmc_nike_style_variants` | `RMC MockupTool Genericas`     |
 
 ## Flujo Principal
 

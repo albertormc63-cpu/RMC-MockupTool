@@ -5,11 +5,11 @@
 Los codigos se reconocen como tokens aislados, no como fragmentos dentro de otras palabras.
 
 - Personalizadas requiere `OD`.
-- Genericas requiere al menos uno de `ST`, `IH`, `TB` o `AS`.
+- Genericas requiere `ST` o una variante activa de `rmc_nike_style_variants` aplicable a Genericas, por ejemplo `IH`, `TB`, `AS`, `SS` o `JR`.
 - `NIKE OD 26 JUN.xlsx` es valido en Personalizadas.
 - `NIKE ST 17 JUL.xlsx` es valido en Genericas.
 - Un OD seleccionado en Genericas se bloquea.
-- Un ST/IH/TB/AS seleccionado en Personalizadas se bloquea.
+- Un ST o codigo de variante de Genericas seleccionado en Personalizadas se bloquea.
 - Un nombre sin codigo reconocido se bloquea.
 - Un nombre que mezcla OD con codigos de Genericas es ambiguo y se bloquea.
 
@@ -26,7 +26,7 @@ Se usa la primera hoja. La lectura actual espera:
 
 Una fila se conserva si contiene Ship Order, WO, Style o Color.
 
-## Formato Genericas / ST-IH-TB-AS
+## Formato Genericas / ST-IH-TB-AS-SS-JR
 
 Se usa la primera hoja. El CEP busca el encabezado dentro de las primeras 25 filas. Para reconocerlo deben existir WO, Style, Roster y cantidad. Si no lo encuentra, usa la fila 2 como respaldo.
 
@@ -53,6 +53,9 @@ Una fila se conserva si contiene WO, Style, Roster o Color/Equipo.
 
 - Sufijo `IH`: Indigenous Heritage.
 - Sufijo `TB`: Throwback.
+- Sufijo `SS`: Stars Stripes.
+- Sufijo `AS`: All Star.
+- Sufijo `JR`: JR Championship.
 - Sufijo `H`: Standard Home.
 - Sufijo `A`: Standard Away.
 - En Genericas, linea y variante tambien pueden inferirse desde Color/Equipo.

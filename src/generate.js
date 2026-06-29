@@ -6,6 +6,7 @@ const childProcess = require("child_process");
 const XLSX = require("xlsx");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const history = require("./history");
+const variantCatalog = require("./variantCatalog");
 
 let fontkit = null;
 
@@ -155,7 +156,7 @@ function validateExcelMode(excelPath, mode) {
     return new RegExp(`(^|[^A-Z0-9])${token}([^A-Z0-9]|$)`).test(normalizedName);
   };
   const hasOd = hasToken("OD");
-  const genericCodes = ["ST", "IH", "TB", "AS", "SS"].filter(hasToken);
+  const genericCodes = variantCatalog.getGenericExcelCodes().filter(hasToken);
   const selectedMode = normalizeMode(mode);
   let detectedMode = "";
 
@@ -167,7 +168,7 @@ function validateExcelMode(excelPath, mode) {
       valid: false,
       message: hasOd && genericCodes.length
         ? `El Excel \"${fileName}\" mezcla OD con ${genericCodes.join("/")}; no se puede determinar su seccion.`
-        : `El Excel \"${fileName}\" no contiene OD ni un codigo de Genericas (ST, IH, TB o AS).`
+        : `El Excel \"${fileName}\" no contiene OD ni un codigo de Genericas (${variantCatalog.getGenericExcelCodes().join(", ")}).`
     };
   }
 
@@ -400,6 +401,7 @@ function normalizeSampleRow(cells, sourceRow, columns) {
   const variant = inferVariant(style) || inferVariantFromColor(color);
   const version = inferVersion(style);
   const teamInfo = inferTeam(color, line);
+  const designInfo = inferDesign(color, variant, line);
 
   return {
     sourceRow,
@@ -416,7 +418,8 @@ function normalizeSampleRow(cells, sourceRow, columns) {
     line,
     variant,
     version,
-    teamInfo
+    teamInfo,
+    designInfo
   };
 }
 
@@ -433,6 +436,7 @@ function normalizeOrderRow(cells, sourceRow) {
   const variant = inferVariant(style);
   const version = inferVersion(style);
   const teamInfo = inferTeam(color, line);
+  const designInfo = inferDesign(color, variant, line);
 
   return {
     sourceRow,
@@ -447,7 +451,8 @@ function normalizeOrderRow(cells, sourceRow) {
     line,
     variant,
     version,
-    teamInfo
+    teamInfo,
+    designInfo
   };
 }
 
@@ -458,13 +463,16 @@ function inferLine(style) {
 }
 
 function inferVariant(style) {
+  if (/SS$/.test(style)) return "SS";
+  if (/AS$/.test(style)) return "AS";
+  if (/JR$/.test(style)) return "JR";
   if (/IH$/.test(style)) return "IH";
   if (/TB$/.test(style)) return "TB";
   return "STANDARD";
 }
 
 function inferVersion(style) {
-  if (/(IH|TB)$/.test(style)) return "";
+  if (/(SS|AS|JR|IH|TB)$/.test(style)) return "";
   if (/A$/.test(style)) return "Away";
   if (/H$/.test(style)) return "Home";
   return "";
@@ -479,9 +487,16 @@ function inferLineFromColor(color) {
 
 function inferVariantFromColor(color) {
   const normalized = cleanUpper(color);
+  if (variantCatalog.findDesign("SS", normalized)) return "SS";
+  if (normalized.indexOf("ALL STAR") !== -1 || normalized.indexOf(" ALLSTARS") !== -1) return "AS";
+  if (normalized.indexOf("JR CHAMP") !== -1 || normalized.indexOf("JR. CHAMP") !== -1) return "JR";
   if (normalized.indexOf("INDIGENOUS") !== -1 || normalized.indexOf(" IH") !== -1) return "IH";
   if (normalized.indexOf("THROWBACK") !== -1) return "TB";
   return "STANDARD";
+}
+
+function inferDesign(color, variant, line) {
+  return variant ? variantCatalog.findDesign(variant, color, { line }) : null;
 }
 
 function inferTeam(color, line) {
@@ -495,7 +510,16 @@ function inferTeam(color, line) {
 }
 
 function buildMockupPath(mockupsRoot, order) {
-  if (!order.teamInfo || !order.line) {
+  if (!order.line) {
+    return "";
+  }
+
+  if (order.designInfo) {
+    const designMockupPath = variantCatalog.buildDesignMockupPath(mockupsRoot, order.designInfo);
+    if (designMockupPath) return designMockupPath;
+  }
+
+  if (!order.teamInfo) {
     return "";
   }
 
@@ -780,7 +804,7 @@ function drawTrackedText(page, text, options) {
 }
 
 function buildOutputPath(outDir, order) {
-  const teamPart = order.teamInfo ? `${order.line} ${order.teamInfo.team} ${order.teamInfo.nickname}` : order.line || "SIN_EQUIPO";
+  const teamPart = getOrderOutputName(order);
   const styleFamily = getStyleFamily(order.style);
   const fileName = [
     order.wo || `FILA ${String(order.sourceRow).padStart(3, "0")}`,
@@ -795,7 +819,7 @@ function buildOutputPath(outDir, order) {
 function buildSamplesOutputPath(outDir, order) {
   const styleFamily = getStyleFamily(order.style);
   const dateFolder = sanitizeFilePart(order.shipDate || "SIN_FECHA");
-  const teamPart = order.teamInfo ? `${order.line} ${order.teamInfo.team} ${order.teamInfo.nickname}` : order.line || "SIN_EQUIPO";
+  const teamPart = getOrderOutputName(order);
   const fileName = [
     order.roster || "SIN_ROSTER",
     teamPart,
@@ -982,13 +1006,27 @@ function buildItemKey(mode, order) {
 }
 
 function getOrderTeamLabel(order) {
+  if (order.designInfo) {
+    return cleanUpper([order.line, order.designInfo.outputName || order.designInfo.designName].filter(Boolean).join(" "));
+  }
   if (!order.teamInfo) return cleanUpper(order.color);
   return cleanUpper([order.line, order.teamInfo.team, order.teamInfo.nickname].filter(Boolean).join(" "));
 }
 
 function getOrderTeamName(order) {
+  if (order.designInfo) return clean(order.designInfo.outputName || order.designInfo.designName);
   if (!order.teamInfo) return clean(order.color);
   return clean(order.teamInfo.team);
+}
+
+function getOrderOutputName(order) {
+  if (order.designInfo) {
+    return [order.line, order.designInfo.outputName || order.designInfo.designName].filter(Boolean).join(" ");
+  }
+
+  return order.teamInfo
+    ? `${order.line} ${order.teamInfo.team} ${order.teamInfo.nickname}`
+    : order.line || "SIN_EQUIPO";
 }
 
 function countBy(values) {

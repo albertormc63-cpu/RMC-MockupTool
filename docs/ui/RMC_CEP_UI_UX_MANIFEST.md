@@ -168,7 +168,7 @@ Select con:
 Antes de leer el archivo:
 
 - `OD` corresponde a Personalizadas.
-- `ST`, `IH`, `TB` y `AS` corresponden a Genericas.
+- `ST` y las variantes activas de `rmc_nike_style_variants` aplicables a Genericas corresponden a Genericas.
 - Los codigos deben ser tokens aislados.
 - Nombre sin codigo: bloquear.
 - Codigo de otra seccion: bloquear y explicar donde corresponde.
@@ -350,7 +350,7 @@ Los duplicados no se imprimen dos veces por defecto: se prefiere el nombre base 
 ## Checklist Antes De Cerrar Cambios
 
 - Probar Personalizadas con nombre OD valido e invalido.
-- Probar Genericas con ST/IH/TB/AS valido e invalido.
+- Probar Genericas con ST/IH/TB/AS/SS/JR valido e invalido.
 - Confirmar que cambiar modo o filtros invalida la validacion.
 - Confirmar que `Validar` no modifica disco ni SQLite.
 - Confirmar conteos de los cinco estados.

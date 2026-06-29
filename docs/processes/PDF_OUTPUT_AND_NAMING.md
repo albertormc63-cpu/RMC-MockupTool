@@ -14,9 +14,13 @@ Resolucion:
 STANDARD/<MASCULINO|FEMENINO>/<Linea> <Ciudad> <Equipo> <Home|Away>.pdf
 INDIGENOUS HERITAGE/<Linea> <Ciudad> <Equipo> IH.pdf
 THROWBACK/<Linea> <Ciudad> <Equipo> TB.pdf
+STARS STRIPES/PLL-GBF.pdf
+STARS STRIPES/PLL-NSF.pdf
+ALL STARS/<PLL|WLL> All Star Game <Home|Away>.pdf
 ```
 
-Si no puede resolverse linea, equipo, variante o version Standard, el pedido se reporta como mockup faltante.
+Si no puede resolverse linea, equipo, variante, design_code o version Standard, el pedido se reporta como mockup faltante.
+Las variantes especiales se identifican desde `rmc_nike_style_variants`; el CEP usa `design_code`, `aliases`, `liga`, `mockup_folder`, `mockup_file_pattern` y `mockup_source_type` de la BD para resolver `SS` y `AS`.
 
 ## Anotacion
 

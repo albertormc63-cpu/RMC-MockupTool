@@ -23,6 +23,7 @@
   const maxLogLines = 180;
 
   const runtime = createRuntime();
+  const excelFileTypes = ["xlsx", "xls", "xlsm"];
   let excelSummary = null;
   let incrementalValidation = null;
   let incrementalValidationSignature = "";
@@ -120,12 +121,17 @@
     const target = document.getElementById(browseButton.dataset.target);
     const kind = browseButton.dataset.browse;
     const selectedPath = kind === "file"
-      ? pickFileFromCep(getBrowseTitle(target.id), target.value)
+      ? pickFileFromCep(getBrowseTitle(target.id), target.value, getBrowseFileTypes(target.id))
       : pickFolderFromCep(getBrowseTitle(target.id), target.value);
 
     if (!selectedPath) return;
 
     if (target.id === "excelPath") {
+      if (!isExcelFile(selectedPath)) {
+        setLog("EXCEL NO CARGADO:\nSelecciona un archivo Excel (.xlsx, .xls o .xlsm).", "log-warning");
+        return;
+      }
+
       const modeValidation = runtime.generate.validateExcelMode(selectedPath, getSelectedMode());
       if (!modeValidation.valid) {
         setLog("EXCEL NO CARGADO:\n" + modeValidation.message, "log-warning");
@@ -154,20 +160,24 @@
     return titles[targetId] || "Selecciona ruta";
   }
 
-  function pickFileFromCep(title, initialPath) {
-    return pickPathFromCep(false, title, initialPath);
+  function getBrowseFileTypes(targetId) {
+    return targetId === "excelPath" ? excelFileTypes : null;
+  }
+
+  function pickFileFromCep(title, initialPath, fileTypes) {
+    return pickPathFromCep(false, title, initialPath, fileTypes);
   }
 
   function pickFolderFromCep(title, initialPath) {
-    return pickPathFromCep(true, title, initialPath);
+    return pickPathFromCep(true, title, initialPath, null);
   }
 
-  function pickPathFromCep(isFolder, title, initialPath) {
+  function pickPathFromCep(isFolder, title, initialPath, fileTypes) {
     if (!window.cep || !window.cep.fs || !window.cep.fs.showOpenDialog) {
       throw new Error("El selector CEP no esta disponible. Abre el panel desde Illustrator.");
     }
 
-    const result = window.cep.fs.showOpenDialog(false, isFolder, title, initialPath || "", null);
+    const result = window.cep.fs.showOpenDialog(false, isFolder, title, initialPath || "", fileTypes || null);
 
     if (!result || result.err) return "";
 
@@ -176,6 +186,11 @@
     }
 
     return normalizeCepPath(result.data || "");
+  }
+
+  function isExcelFile(filePath) {
+    if (!runtime.ready || !runtime.path) return /\.(xlsx|xls|xlsm)$/i.test(filePath || "");
+    return excelFileTypes.indexOf(runtime.path.extname(filePath || "").slice(1).toLowerCase()) !== -1;
   }
 
   function normalizeCepPath(value) {
