@@ -46,6 +46,7 @@ Una fila se conserva si contiene WO, Style, Roster o Color/Equipo.
 ### Familia Y Linea
 
 - Styles `A1000...` y `Y1000...` pertenecen a PLL.
+- Styles `A1500...` y `Y1500...` pertenecen a PLL y representan shorts.
 - Styles `A2000...` y `Y2000...` pertenecen a WLL.
 - La familia de salida es el prefijo `A####` o `Y####`; si no se reconoce se usa `SIN_STYLE`.
 
@@ -55,7 +56,7 @@ Una fila se conserva si contiene WO, Style, Roster o Color/Equipo.
 - Sufijo `TB`: Throwback.
 - Sufijo `SS`: Stars Stripes.
 - Sufijo `AS`: All Star.
-- Sufijo `JR`: JR Championship.
+- Sufijo `JR`: JR Championship. En `A1000JR`/`Y1000JR` se muestra como `JR Champ`; en `A1500JR`/`Y1500JR` se muestra como `JR Champ Shorts`.
 - Sufijo `H`: Standard Home.
 - Sufijo `A`: Standard Away.
 - En Genericas, linea y variante tambien pueden inferirse desde Color/Equipo.

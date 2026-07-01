@@ -618,6 +618,7 @@
       item.registroExiste ? (item.impreso ? "IMPRESO" : "NO IMPRESO") : "SIN REGISTRO",
       item.clave || "SIN CLAVE",
       item.style || "SIN STYLE",
+      item.variantLabel || item.variante || "",
       item.size || "SIN TALLA",
       item.error || "",
       item.expectedPath
@@ -676,6 +677,7 @@
       "Excel " + String(item.excelOrder).padStart(3, "0"),
       item.key || "SIN CLAVE",
       item.style || "SIN STYLE",
+      item.variantLabel || "",
       item.size || "SIN TALLA",
       item.registroExiste ? (item.impreso ? "IMPRESO" : "NO IMPRESO") : "SIN REGISTRO",
       item.match,
@@ -688,6 +690,7 @@
       "Fila " + row.sourceRow,
       row.key || "SIN CLAVE",
       row.style || "SIN STYLE",
+      row.variantLabel || "",
       row.size || "SIN TALLA",
       row.expectedPath
     ].join(" | ");

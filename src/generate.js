@@ -69,6 +69,31 @@ const femaleTeams = {
   CHARGING: { team: "New York", nickname: "Charging" }
 };
 
+const STYLE_LINE_BY_BASE = {
+  "1000": "PLL",
+  "1500": "PLL",
+  "2000": "WLL"
+};
+
+const STYLE_GARMENT_BY_BASE = {
+  "1000": "top",
+  "1500": "shorts",
+  "2000": "top"
+};
+
+const JR_CHAMPIONSHIP_BY_GARMENT = {
+  top: {
+    label: "JR Champ",
+    mockupSuffix: "JR Champ"
+  },
+  shorts: {
+    label: "JR Champ Shorts",
+    mockupSuffix: "JR Champ Shorts"
+  }
+};
+
+const SPECIAL_VARIANT_SUFFIXES = ["SS", "AS", "JR", "IH", "TB"];
+
 function parseArgs(argv) {
   const args = {
     excel: DEFAULT_EXCEL,
@@ -400,6 +425,8 @@ function normalizeSampleRow(cells, sourceRow, columns) {
   const line = inferLine(style) || inferLineFromColor(color);
   const variant = inferVariant(style) || inferVariantFromColor(color);
   const version = inferVersion(style) || inferVersionFromColor(color);
+  const garmentType = inferGarmentType(style);
+  const variantLabel = getVariantLabel({ style, variant, garmentType });
   const teamInfo = inferTeam(color, line);
   const designInfo = inferDesign(color, variant, line);
 
@@ -417,6 +444,8 @@ function normalizeSampleRow(cells, sourceRow, columns) {
     playerNumber: "",
     line,
     variant,
+    variantLabel,
+    garmentType,
     version,
     teamInfo,
     designInfo
@@ -435,6 +464,8 @@ function normalizeOrderRow(cells, sourceRow) {
   const line = inferLine(style);
   const variant = inferVariant(style);
   const version = inferVersion(style) || inferVersionFromColor(color);
+  const garmentType = inferGarmentType(style);
+  const variantLabel = getVariantLabel({ style, variant, garmentType });
   const teamInfo = inferTeam(color, line);
   const designInfo = inferDesign(color, variant, line);
 
@@ -450,32 +481,71 @@ function normalizeOrderRow(cells, sourceRow) {
     playerNumber: clean(cells[7]).replace(/[^0-9]/g, ""),
     line,
     variant,
+    variantLabel,
+    garmentType,
     version,
     teamInfo,
     designInfo
   };
 }
 
+function parseStyle(style) {
+  const normalized = cleanUpper(style);
+  const match = normalized.match(/^([AY])([0-9]{4})([A-Z]*)$/);
+  const suffix = match ? match[3] : "";
+  const specialSuffix = SPECIAL_VARIANT_SUFFIXES.find(function (candidate) {
+    return suffix === candidate;
+  });
+
+  return {
+    normalized,
+    alpha: match ? match[1] : "",
+    baseCode: match ? match[2] : "",
+    family: match ? match[1] + match[2] : "",
+    suffix,
+    specialSuffix
+  };
+}
+
 function inferLine(style) {
-  if (/^[AY]1000/.test(style)) return "PLL";
-  if (/^[AY]2000/.test(style)) return "WLL";
-  return "";
+  const parsed = parseStyle(style);
+  return STYLE_LINE_BY_BASE[parsed.baseCode] || "";
 }
 
 function inferVariant(style) {
-  if (/SS$/.test(style)) return "SS";
-  if (/AS$/.test(style)) return "AS";
-  if (/JR$/.test(style)) return "JR";
-  if (/IH$/.test(style)) return "IH";
-  if (/TB$/.test(style)) return "TB";
+  const parsed = parseStyle(style);
+  if (parsed.specialSuffix) return parsed.specialSuffix;
   return "STANDARD";
 }
 
 function inferVersion(style) {
-  if (/(SS|AS|JR|IH|TB)$/.test(style)) return "";
+  const parsed = parseStyle(style);
+  if (parsed.specialSuffix) return "";
   if (/A$/.test(style)) return "Away";
   if (/H$/.test(style)) return "Home";
   return "";
+}
+
+function inferGarmentType(style) {
+  const parsed = parseStyle(style);
+  return STYLE_GARMENT_BY_BASE[parsed.baseCode] || "";
+}
+
+function getVariantLabel(order) {
+  const variant = cleanUpper(order && order.variant);
+  if (variant === "JR") {
+    const garmentType = order.garmentType || inferGarmentType(order.style);
+    const jrInfo = JR_CHAMPIONSHIP_BY_GARMENT[garmentType] || JR_CHAMPIONSHIP_BY_GARMENT.top;
+    return jrInfo.label;
+  }
+
+  return variant;
+}
+
+function getJrChampionshipInfo(order) {
+  if (cleanUpper(order && order.variant) !== "JR") return null;
+  const garmentType = order.garmentType || inferGarmentType(order.style);
+  return JR_CHAMPIONSHIP_BY_GARMENT[garmentType] || null;
 }
 
 function inferVersionFromColor(color) {
@@ -504,6 +574,7 @@ function inferVariantFromColor(color) {
 }
 
 function inferDesign(color, variant, line) {
+  if (variant === "JR") return null;
   return variant ? variantCatalog.findDesign(variant, color, { line }) : null;
 }
 
@@ -529,6 +600,17 @@ function buildMockupPath(mockupsRoot, order) {
 
   if (!order.teamInfo) {
     return "";
+  }
+
+  if (order.variant === "JR") {
+    const jrInfo = getJrChampionshipInfo(order);
+    if (!jrInfo) return "";
+
+    return path.join(
+      mockupsRoot,
+      "JR CHAMPIONSHIP",
+      `${order.line} ${order.teamInfo.team} ${order.teamInfo.nickname} ${jrInfo.mockupSuffix}.pdf`
+    );
   }
 
   if (order.variant === "IH") {
@@ -994,6 +1076,8 @@ function buildValidationItem(job, order, index) {
     styleFamily: getStyleFamily(order.style),
     equipo,
     variante: order.variant || "",
+    variantLabel: order.variantLabel || getVariantLabel(order),
+    garmentType: order.garmentType || "",
     version: order.version || "",
     color: order.color || "",
     talla: order.size || "",
@@ -1017,6 +1101,9 @@ function getOrderTeamLabel(order) {
   if (order.designInfo) {
     return cleanUpper([order.line, order.designInfo.outputName || order.designInfo.designName].filter(Boolean).join(" "));
   }
+  if (order.variant === "JR" && order.teamInfo) {
+    return cleanUpper([order.line, order.teamInfo.team, order.teamInfo.nickname, order.variantLabel || getVariantLabel(order)].filter(Boolean).join(" "));
+  }
   if (!order.teamInfo) return cleanUpper(order.color);
   return cleanUpper([order.line, order.teamInfo.team, order.teamInfo.nickname].filter(Boolean).join(" "));
 }
@@ -1030,6 +1117,10 @@ function getOrderTeamName(order) {
 function getOrderOutputName(order) {
   if (order.designInfo) {
     return [order.line, order.designInfo.outputName || order.designInfo.designName].filter(Boolean).join(" ");
+  }
+
+  if (order.variant === "JR" && order.teamInfo) {
+    return [order.line, order.teamInfo.team, order.teamInfo.nickname, order.variantLabel || getVariantLabel(order)].filter(Boolean).join(" ");
   }
 
   return order.teamInfo
@@ -1097,6 +1188,10 @@ async function generateMockups(options) {
     const validationItem = validationByClave[buildItemKey(mode, order)];
     const mockupPath = buildMockupPath(options.mockups, order);
 
+    if (order.variant === "JR") {
+      console.log(`JR Championship detectado fila ${order.sourceRow}: ${order.style} -> ${order.variantLabel || getVariantLabel(order)} (${order.garmentType || "sin tipo"}) | ${getOrderOutputName(order)}`);
+    }
+
     if (!mockupPath || !fs.existsSync(mockupPath)) {
       missing++;
       missingRows.push({
@@ -1104,6 +1199,8 @@ async function generateMockups(options) {
         sourceRows: order.sourceRows || [order.sourceRow],
         clave: validationItem ? validationItem.clave : buildItemKey(mode, order),
         style: order.style,
+        variantLabel: order.variantLabel || getVariantLabel(order),
+        garmentType: order.garmentType || "",
         color: order.color,
         mockupPath
       });
@@ -1351,6 +1448,8 @@ function preparePrintQueue(options) {
         sourceRows: order.sourceRows || [order.sourceRow],
         key: getPrintKeys(order, job.mode).join(" / "),
         style: order.style,
+        variantLabel: order.variantLabel || getVariantLabel(order),
+        garmentType: order.garmentType || "",
         size: order.size,
         chosenPath,
         candidates
@@ -1363,6 +1462,8 @@ function preparePrintQueue(options) {
         sourceRows: order.sourceRows || [order.sourceRow],
         key: getPrintKeys(order, job.mode).join(" / "),
         style: order.style,
+        variantLabel: order.variantLabel || getVariantLabel(order),
+        garmentType: order.garmentType || "",
         size: order.size,
         expectedPath,
         candidates
@@ -1378,6 +1479,8 @@ function preparePrintQueue(options) {
       clave,
       key: getPrintKeys(order, job.mode).join(" / "),
       style: order.style,
+      variantLabel: order.variantLabel || getVariantLabel(order),
+      garmentType: order.garmentType || "",
       size: order.size,
       qty: order.qty,
       path: chosenPath,

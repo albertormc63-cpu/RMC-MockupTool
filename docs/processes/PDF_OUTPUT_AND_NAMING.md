@@ -17,10 +17,12 @@ THROWBACK/<Linea> <Ciudad> <Equipo> TB.pdf
 STARS STRIPES/PLL-GBF.pdf
 STARS STRIPES/PLL-NSF.pdf
 ALL STARS/<PLL|WLL> All Star Game <Home|Away>.pdf
+JR CHAMPIONSHIP/PLL <Ciudad> <Equipo> JR Champ.pdf
+JR CHAMPIONSHIP/PLL <Ciudad> <Equipo> JR Champ Shorts.pdf
 ```
 
 Si no puede resolverse linea, equipo, variante, design_code o version Standard, el pedido se reporta como mockup faltante.
-Las variantes especiales se identifican desde `rmc_nike_style_variants`; el CEP usa `design_code`, `aliases`, `liga`, `mockup_folder`, `mockup_file_pattern` y `mockup_source_type` de la BD para resolver `SS` y `AS`.
+Las variantes especiales se identifican desde `rmc_nike_style_variants`; el CEP usa `design_code`, `aliases`, `liga`, `mockup_folder`, `mockup_file_pattern` y `mockup_source_type` de la BD para resolver `SS` y `AS`. `JR` usa el codigo activo de la BD para habilitar Genericas y resuelve los PDFs de `JR CHAMPIONSHIP` segun equipo y tipo de prenda.
 
 ## Anotacion
 
@@ -75,7 +77,7 @@ El operador siempre elige la raiz. El CEP agrega la seccion, el Excel sin extens
 
 ## Reglas Compartidas
 
-- Las familias separan adulto/nino y hombre/mujer mediante `A1000`, `Y1000`, `A2000`, `Y2000`, etc.
+- Las familias separan adulto/nino, hombre/mujer y prenda mediante `A1000`, `Y1000`, `A1500`, `Y1500`, `A2000`, `Y2000`, etc.
 - El CEP no reemplaza archivos existentes ni crea copias durante el flujo seguro.
 - `archivo` conserva el nombre del PDF.
 - `path` conserva la ruta completa del PDF.
