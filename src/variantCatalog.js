@@ -31,7 +31,7 @@ const fallbackRows = [
     requires_design_code: 1,
     design_code: "GNB1",
     design_name: "Green Beret Foundation",
-    aliases: "Green Beret; Green Beret Fundation; Green Beret Foundation",
+    aliases: "Green Beret; Green Beret Fundation; Green Beret Foundation; GBF",
     mockup_folder: "STARS STRIPES",
     mockup_file_pattern: "PLL-GBF.pdf",
     mockup_source_type: "pdf",
@@ -43,7 +43,7 @@ const fallbackRows = [
     requires_design_code: 1,
     design_code: "NYS1",
     design_name: "Navy SEAL Foundation",
-    aliases: "Navy SEALs; Navy Seal Foundation; Navy SEALs Foundation",
+    aliases: "Navy SEALs; Navy Seal Foundation; Navy SEALs Foundation; NSF",
     mockup_folder: "STARS STRIPES",
     mockup_file_pattern: "PLL-NSF.pdf",
     mockup_source_type: "pdf",
@@ -141,8 +141,33 @@ function getMatchTokens(row) {
     row.design_name,
     row.file_team_name
   ].concat(splitAliases(row.aliases))
+    .concat(getAcronymTokens(row))
+    .concat(getMockupFileTokens(row.mockup_file_pattern))
     .map(cleanUpper)
     .filter(Boolean);
+}
+
+function getAcronymTokens(row) {
+  return [
+    buildAcronym(row.design_name),
+    buildAcronym(row.file_team_name)
+  ].concat(splitAliases(row.aliases).map(buildAcronym));
+}
+
+function buildAcronym(value) {
+  const words = clean(value).match(/[A-Za-z0-9]+/g) || [];
+  if (words.length < 2) return "";
+  return words.map(function (word) { return word.charAt(0); }).join("");
+}
+
+function getMockupFileTokens(value) {
+  const baseName = path.basename(clean(value), path.extname(clean(value)));
+  const ignored = new Set(["PDF", "JPG", "JPEG", "PNG", "PLL", "WLL"]);
+
+  return (baseName.match(/[A-Za-z0-9]+/g) || []).filter(function (token) {
+    const normalized = cleanUpper(token);
+    return normalized.length > 1 && !ignored.has(normalized);
+  });
 }
 
 function normalizeDesign(row) {

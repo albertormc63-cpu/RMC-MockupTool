@@ -399,7 +399,7 @@ function normalizeSampleRow(cells, sourceRow, columns) {
   const color = clean(readCell(cells, columns.color));
   const line = inferLine(style) || inferLineFromColor(color);
   const variant = inferVariant(style) || inferVariantFromColor(color);
-  const version = inferVersion(style);
+  const version = inferVersion(style) || inferVersionFromColor(color);
   const teamInfo = inferTeam(color, line);
   const designInfo = inferDesign(color, variant, line);
 
@@ -434,7 +434,7 @@ function normalizeOrderRow(cells, sourceRow) {
   const color = clean(cells[3]);
   const line = inferLine(style);
   const variant = inferVariant(style);
-  const version = inferVersion(style);
+  const version = inferVersion(style) || inferVersionFromColor(color);
   const teamInfo = inferTeam(color, line);
   const designInfo = inferDesign(color, variant, line);
 
@@ -475,6 +475,14 @@ function inferVersion(style) {
   if (/(SS|AS|JR|IH|TB)$/.test(style)) return "";
   if (/A$/.test(style)) return "Away";
   if (/H$/.test(style)) return "Home";
+  return "";
+}
+
+function inferVersionFromColor(color) {
+  const normalized = cleanUpper(color).replace(/[^A-Z0-9]+/g, " ");
+  const tokens = normalized.split(" ").filter(Boolean);
+  if (tokens.indexOf("AWAY") !== -1) return "Away";
+  if (tokens.indexOf("HOME") !== -1) return "Home";
   return "";
 }
 

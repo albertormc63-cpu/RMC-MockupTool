@@ -16,7 +16,7 @@ variantCatalog.__setRowsForTesting([
     requires_design_code: 1,
     design_code: "GNB1",
     design_name: "Green Beret Foundation",
-    aliases: "Green Beret; Green Beret Fundation; Green Beret Foundation",
+    aliases: "Green Beret; Green Beret Fundation; Green Beret Foundation; GBF",
     mockup_folder: "STARS STRIPES",
     mockup_file_pattern: "PLL-GBF.pdf",
     mockup_source_type: "pdf",
@@ -28,7 +28,7 @@ variantCatalog.__setRowsForTesting([
     requires_design_code: 1,
     design_code: "NYS1",
     design_name: "Navy SEAL Foundation",
-    aliases: "Navy SEALs; Navy Seal Foundation; Navy SEALs Foundation",
+    aliases: "Navy SEALs; Navy Seal Foundation; Navy SEALs Foundation; NSF",
     mockup_folder: "STARS STRIPES",
     mockup_file_pattern: "PLL-NSF.pdf",
     mockup_source_type: "pdf",
@@ -73,9 +73,11 @@ assert.strictEqual(validateExcelMode("NIKE AS 3 JUL.xlsx", "samples").valid, tru
 const workbook = XLSX.utils.book_new();
 const sheet = XLSX.utils.aoa_to_sheet([
   ["WO", "Style", "Roster", "QTY", "Color", "Emb"],
-  ["173833", "A1000SS", "79229-26", "250", "GNB1 Green Beret", "3-JUL"],
-  ["173829", "A1000SS", "79230-26", "48", "NYS1 Navy SEALs", "3-JUL"],
-  ["173830", "A1000AS", "79231-26", "12", "Team B", "3-JUL"]
+  ["173833", "A1000SS", "79229-26", "250", "79405-26 PLL-GBF.jpg", "3-JUL"],
+  ["173829", "A1000SS", "79230-26", "48", "79406-26 PLL-NSF.jpg", "3-JUL"],
+  ["173830", "A1000AS", "79231-26", "12", "Team B", "3-JUL"],
+  ["173831", "A1000", "79232-26", "24", "Utah-Archers-Home-Fields-5.jpg", "3-JUL"],
+  ["173832", "Y1000", "79233-26", "36", "New-York-Atlas-Away-Baptiste-9.jpg", "3-JUL"]
 ]);
 XLSX.utils.book_append_sheet(workbook, sheet, "Hoja1");
 
@@ -83,6 +85,8 @@ const excel = readExcelBuffer(XLSX.write(workbook, { type: "buffer", bookType: "
 const greenBeret = excel.rows[0];
 const navySeal = excel.rows[1];
 const allStar = excel.rows[2];
+const standardHome = excel.rows[3];
+const standardAway = excel.rows[4];
 
 assert.strictEqual(greenBeret.variant, "SS");
 assert.strictEqual(greenBeret.designInfo.designName, "Green Beret Foundation");
@@ -108,5 +112,15 @@ assert.strictEqual(
   buildSamplesOutputPath("/tmp/out", allStar),
   "/tmp/out/A1000/3-JUL/79231-26 - PLL Home West - A1000AS - 12pz.pdf"
 );
+
+assert.strictEqual(standardHome.variant, "STANDARD");
+assert.strictEqual(standardHome.version, "Home");
+assert.strictEqual(standardHome.teamInfo.nickname, "Archers");
+assert.strictEqual(buildMockupPath(DEFAULT_MOCKUPS, standardHome).endsWith("STANDARD/MASCULINO/PLL Utah Archers Home.pdf"), true);
+
+assert.strictEqual(standardAway.variant, "STANDARD");
+assert.strictEqual(standardAway.version, "Away");
+assert.strictEqual(standardAway.teamInfo.nickname, "Atlas");
+assert.strictEqual(buildMockupPath(DEFAULT_MOCKUPS, standardAway).endsWith("STANDARD/MASCULINO/PLL New York Atlas Away.pdf"), true);
 
 console.log("ss-variant.test.js OK");
