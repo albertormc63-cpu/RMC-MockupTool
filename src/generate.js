@@ -50,6 +50,14 @@ const SAMPLES_TEXT_POSITION = {
   style: { x: 0.58, y: 4.30 },
   qty: { x: 0.58, y: 2.08, tracking: -72 }
 };
+const SAMPLES_SHORTS_TEXT_POSITION = {
+  date: SAMPLES_TEXT_POSITION.date,
+  wo: SAMPLES_TEXT_POSITION.wo,
+  roster: SAMPLES_TEXT_POSITION.roster,
+  style: { x: 2.02, y: 1.80 },
+  qty: { x: 3.00, y: 6.60 }
+};
+const SAMPLES_SHORTS_SIGNATURE_POSITION = { x: 5.00, y: 1.30 };
 
 const maleTeams = {
   ARCHERS: { team: "Utah", nickname: "Archers", code: "X001" },
@@ -698,25 +706,26 @@ async function annotateSamplesPdf({ mockupPath, outputPath, order, fontPath, sig
   const page = pdf.getPages()[0];
   const font = await loadPreferredFont(pdf, fontPath);
   const boldFont = font;
+  const positions = getSamplesTextPosition(order);
 
   drawText(page, `WO# ${order.wo}`.toUpperCase(), {
-    x: SAMPLES_TEXT_POSITION.wo.x,
-    y: SAMPLES_TEXT_POSITION.wo.y,
+    x: positions.wo.x,
+    y: positions.wo.y,
     size: 18,
     font: boldFont
   });
 
   drawText(page, order.style.toUpperCase(), {
-    x: SAMPLES_TEXT_POSITION.style.x,
-    y: SAMPLES_TEXT_POSITION.style.y,
+    x: positions.style.x,
+    y: positions.style.y,
     size: 18,
     font: boldFont
   });
 
   if (order.shipDate) {
     drawText(page, order.shipDate.toUpperCase(), {
-      x: SAMPLES_TEXT_POSITION.date.x,
-      y: SAMPLES_TEXT_POSITION.date.y,
+      x: positions.date.x,
+      y: positions.date.y,
       size: 12,
       font,
       color: DATE_COLOR
@@ -724,24 +733,36 @@ async function annotateSamplesPdf({ mockupPath, outputPath, order, fontPath, sig
   }
 
   drawQty(page, String(order.qty || 1), {
-    x: SAMPLES_TEXT_POSITION.qty.x,
-    y: SAMPLES_TEXT_POSITION.qty.y,
-    tracking: SAMPLES_TEXT_POSITION.qty.tracking,
+    x: positions.qty.x,
+    y: positions.qty.y,
+    tracking: positions.qty.tracking,
     numberFont: boldFont,
     suffixFont: font
   });
 
   drawText(page, `${order.roster || "SIN ROSTER"}`.toUpperCase(), {
-    x: SAMPLES_TEXT_POSITION.roster.x,
-    y: SAMPLES_TEXT_POSITION.roster.y,
+    x: positions.roster.x,
+    y: positions.roster.y,
     size: 18,
     font: boldFont
   });
 
-  await drawSignature(pdf, page, signaturePath, SAMPLES_SIGNATURE_POSITION);
+  await drawSignature(pdf, page, signaturePath, getSamplesSignaturePosition(order));
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, await pdf.save());
+}
+
+function getSamplesTextPosition(order) {
+  return isShortsOrder(order) ? SAMPLES_SHORTS_TEXT_POSITION : SAMPLES_TEXT_POSITION;
+}
+
+function getSamplesSignaturePosition(order) {
+  return isShortsOrder(order) ? SAMPLES_SHORTS_SIGNATURE_POSITION : SAMPLES_SIGNATURE_POSITION;
+}
+
+function isShortsOrder(order) {
+  return (order.garmentType || inferGarmentType(order.style)) === "shorts";
 }
 
 function getSizeTextX(order) {
@@ -942,6 +963,17 @@ function getSectionOutputRoot(outDir, sectionName, excelName) {
   return path.join(outDir, sectionName, baseName);
 }
 
+function getJobOutputRoot(options, mode, sectionName, excelName) {
+  const baseDir = mode === MODE_SAMPLES ? getSamplesOutputBaseDir(options) : options.out;
+  return getSectionOutputRoot(baseDir, sectionName, excelName);
+}
+
+function getSamplesOutputBaseDir(options) {
+  const excelPath = clean(options && options.excel);
+  const excelDir = excelPath ? path.dirname(excelPath) : "";
+  return excelDir && excelDir !== "." ? excelDir : options.out;
+}
+
 function getStyleFamily(style) {
   const match = cleanUpper(style).match(/^[AY][0-9]{4}/);
   return match ? match[0] : "SIN_STYLE";
@@ -962,7 +994,7 @@ function buildSelectedJob(options) {
   const consolidatedRows = selection.consolidatedRows;
   const rows = options.limit > 0 ? consolidatedRows.slice(0, options.limit) : consolidatedRows;
   const sectionName = mode === MODE_SAMPLES ? SECTION_SAMPLES : SECTION_BULK;
-  const outputRoot = getSectionOutputRoot(options.out, sectionName, excelName);
+  const outputRoot = getJobOutputRoot(options, mode, sectionName, excelName);
   const fechaEmbarque = mode === MODE_SAMPLES
     ? uniqueSorted(consolidatedRows.map(function (row) { return normalizeFechaEmbarque(row.shipDate); })).join(", ")
     : normalizeFechaEmbarque(excel.dateText);
@@ -1761,6 +1793,7 @@ module.exports = {
   buildMockupPath,
   buildOutputPath,
   buildSamplesOutputPath,
+  getJobOutputRoot,
   selectJobRows,
   generateMockups,
   validateMockups,

@@ -46,13 +46,15 @@ Disenadores admitidos:
 
 ## Raiz De Salida
 
-Valor predeterminado, modificable manualmente:
+Para `Personalizadas`, valor predeterminado modificable manualmente:
 
 ```text
 /Volumes/Fullsize/TO PRINT/NIKE ORDERS/LISTAS ON DEMAND
 ```
 
-El operador siempre elige la raiz. El CEP agrega la seccion, el Excel sin extension y las carpetas operativas.
+El CEP agrega la seccion, el Excel sin extension y las carpetas operativas.
+
+Para `Genericas`, la raiz de salida es la carpeta donde esta el Excel seleccionado. Si no hay ruta fisica de Excel disponible, usa la raiz configurada como respaldo.
 
 ## Personalizadas
 
@@ -67,13 +69,14 @@ El operador siempre elige la raiz. El CEP agrega la seccion, el Excel sin extens
 ## Genericas
 
 ```text
-<raiz>/Genericas/<Excel sin extension>/<StyleFamily>/<Emb>/
+<carpeta del Excel>/Genericas/<Excel sin extension>/<StyleFamily>/<Emb>/
 <Roster> - <Linea Ciudad Equipo> - <Style> - <Piezas>pz.pdf
 ```
 
 - El archivo inicia con Roster.
 - No agrega WO al inicio.
 - La carpeta fisica `<Emb>` conserva el valor operativo del Excel sanitizado.
+- La salida queda junto al Excel seleccionado, dentro de la seccion `Genericas`.
 
 ## Reglas Compartidas
 

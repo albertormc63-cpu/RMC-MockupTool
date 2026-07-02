@@ -4,7 +4,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "check": "node --check src/generate.js && node --check src/history.js && node --check js/app.js && node tests/consolidation.test.js && node tests/ss-variant.test.js",
+    "check": "node --check src/generate.js && node --check src/history.js && node --check js/app.js && node tests/consolidation.test.js && node tests/ss-variant.test.js && node tests/output-root.test.js",
     "generate": "node src/generate.js"
   },
   "dependencies": {
