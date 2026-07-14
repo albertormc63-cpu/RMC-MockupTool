@@ -42,9 +42,9 @@ variantCatalog.__setRowsForTesting([
   {
     variant_code: "AS",
     variant_name: "All Star",
-    design_code: "AS-F-TB",
+    design_code: "AS-F-TA",
     design_name: "Home / West",
-    aliases: "Home; West; TeamB; Team B; HAS1",
+    aliases: "Home; West; TeamA; Team A; HAS1",
     mockup_folder: "ALL STARS",
     mockup_file_pattern: "WLL All Star Game Home.pdf",
     mockup_source_type: "pdf",
@@ -54,11 +54,35 @@ variantCatalog.__setRowsForTesting([
   {
     variant_code: "AS",
     variant_name: "All Star",
-    design_code: "AS-M-TB",
+    design_code: "AS-F-TB",
+    design_name: "Away / East",
+    aliases: "Away; East; TeamB; Team B; AAS1",
+    mockup_folder: "ALL STARS",
+    mockup_file_pattern: "WLL All Star Game Away.pdf",
+    mockup_source_type: "pdf",
+    mockup_status: "ready_pdf",
+    liga: "WLL"
+  },
+  {
+    variant_code: "AS",
+    variant_name: "All Star",
+    design_code: "AS-M-TA",
     design_name: "Home / West",
-    aliases: "Home; West; TeamB; Team B; HAS1",
+    aliases: "Home; West; TeamA; Team A; HAS1",
     mockup_folder: "ALL STARS",
     mockup_file_pattern: "PLL All Star Game Home.pdf",
+    mockup_source_type: "pdf",
+    mockup_status: "ready_pdf",
+    liga: "PLL"
+  },
+  {
+    variant_code: "AS",
+    variant_name: "All Star",
+    design_code: "AS-M-TB",
+    design_name: "Away / East",
+    aliases: "Away; East; TeamB; Team B; AAS1",
+    mockup_folder: "ALL STARS",
+    mockup_file_pattern: "PLL All Star Game Away.pdf",
     mockup_source_type: "pdf",
     mockup_status: "ready_pdf",
     liga: "PLL"
@@ -75,7 +99,8 @@ const sheet = XLSX.utils.aoa_to_sheet([
   ["WO", "Style", "Roster", "QTY", "Color", "Emb"],
   ["173833", "A1000SS", "79229-26", "250", "79405-26 PLL-GBF.jpg", "3-JUL"],
   ["173829", "A1000SS", "79230-26", "48", "79406-26 PLL-NSF.jpg", "3-JUL"],
-  ["173830", "A1000AS", "79231-26", "12", "Team B", "3-JUL"],
+  ["173830", "A1000AS", "79231-26", "12", "Team A", "3-JUL"],
+  ["173834", "A1000AS", "79238-26", "13", "Team B", "3-JUL"],
   ["173840", "A1000JR", "79234-26", "8", "PLL Utah Archers JR Champ", "3-JUL"],
   ["173841", "Y1000JR", "79235-26", "9", "PLL New York Atlas JR Champ", "3-JUL"],
   ["173842", "A1500JR", "79236-26", "10", "PLL Philadelphia Waterdogs JR Champ Shorts", "3-JUL"],
@@ -88,13 +113,14 @@ XLSX.utils.book_append_sheet(workbook, sheet, "Hoja1");
 const excel = readExcelBuffer(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }), "samples");
 const greenBeret = excel.rows[0];
 const navySeal = excel.rows[1];
-const allStar = excel.rows[2];
-const adultJrChamp = excel.rows[3];
-const youthJrChamp = excel.rows[4];
-const adultJrChampShorts = excel.rows[5];
-const youthJrChampShorts = excel.rows[6];
-const standardHome = excel.rows[7];
-const standardAway = excel.rows[8];
+const allStarTeamA = excel.rows[2];
+const allStarTeamB = excel.rows[3];
+const adultJrChamp = excel.rows[4];
+const youthJrChamp = excel.rows[5];
+const adultJrChampShorts = excel.rows[6];
+const youthJrChampShorts = excel.rows[7];
+const standardHome = excel.rows[8];
+const standardAway = excel.rows[9];
 
 assert.strictEqual(greenBeret.variant, "SS");
 assert.strictEqual(greenBeret.designInfo.designName, "Green Beret Foundation");
@@ -112,14 +138,26 @@ assert.strictEqual(
   "/tmp/out/A1000/3-JUL/79230-26 - PLL Navy SEAL Foundation - A1000SS - 48pz.pdf"
 );
 
-assert.strictEqual(allStar.variant, "AS");
-assert.strictEqual(allStar.designInfo.code, "AS-M-TB");
-assert.strictEqual(allStar.designInfo.designName, "Home / West");
-assert.strictEqual(buildMockupPath(DEFAULT_MOCKUPS, allStar).endsWith("ALL STARS/PLL All Star Game Home.pdf"), true);
+assert.strictEqual(allStarTeamA.variant, "AS");
+assert.strictEqual(allStarTeamA.designInfo.code, "AS-M-TA");
+assert.strictEqual(allStarTeamA.designInfo.designName, "Home / West");
+assert.strictEqual(buildMockupPath(DEFAULT_MOCKUPS, allStarTeamA).endsWith("ALL STARS/PLL All Star Game Home.pdf"), true);
 assert.strictEqual(
-  buildSamplesOutputPath("/tmp/out", allStar),
+  buildSamplesOutputPath("/tmp/out", allStarTeamA),
   "/tmp/out/A1000/3-JUL/79231-26 - PLL Home West - A1000AS - 12pz.pdf"
 );
+
+assert.strictEqual(allStarTeamB.variant, "AS");
+assert.strictEqual(allStarTeamB.designInfo.code, "AS-M-TB");
+assert.strictEqual(allStarTeamB.designInfo.designName, "Away / East");
+assert.strictEqual(buildMockupPath(DEFAULT_MOCKUPS, allStarTeamB).endsWith("ALL STARS/PLL All Star Game Away.pdf"), true);
+assert.strictEqual(
+  buildSamplesOutputPath("/tmp/out", allStarTeamB),
+  "/tmp/out/A1000/3-JUL/79238-26 - PLL Away East - A1000AS - 13pz.pdf"
+);
+assert.strictEqual(variantCatalog.findDesign("AS", "All Star", { line: "PLL" }), null);
+assert.strictEqual(variantCatalog.findDesign("AS", "PLL All Star Game", { line: "PLL" }), null);
+assert.strictEqual(variantCatalog.findDesign("AS", "AS-M-TB", { line: "PLL" }).designName, "Away / East");
 
 assert.strictEqual(adultJrChamp.variant, "JR");
 assert.strictEqual(adultJrChamp.variantLabel, "JR Champ");

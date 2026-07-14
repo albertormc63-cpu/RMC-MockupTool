@@ -6,6 +6,22 @@ const history = require("./history");
 const SQLITE_BIN = fs.existsSync("/usr/bin/sqlite3") ? "/usr/bin/sqlite3" : "sqlite3";
 const STANDARD_GENERIC_CODE = "ST";
 const GENERIC_EXCEL_EXCLUDED_CODES = ["A", "H"];
+const ALL_STAR_TEAM_DESIGNS = {
+  A: {
+    designName: "Home / West",
+    outputName: "Home West",
+    mockupSide: "Home",
+    aliases: ["Home", "West", "TeamA", "Team A", "X001", "HAS1"],
+    tokens: ["TEAM A", "TEAMA", "X001", "HAS1", "HOME", "WEST"]
+  },
+  B: {
+    designName: "Away / East",
+    outputName: "Away East",
+    mockupSide: "Away",
+    aliases: ["Away", "East", "TeamB", "Team B", "X002", "AAS1"],
+    tokens: ["TEAM B", "TEAMB", "X002", "AAS1", "AWAY", "EAST"]
+  }
+};
 
 const fallbackRows = [
   {
@@ -120,6 +136,7 @@ function findDesign(variantCode, value, criteria) {
   const line = cleanUpper(criteria && criteria.line);
 
   if (!variant || !normalized) return null;
+  if (variant === "AS") return findAllStarDesign(normalized, line);
 
   const matches = getRows().filter(function (candidate) {
     if (cleanUpper(candidate.variant_code) !== variant) return false;
@@ -133,6 +150,57 @@ function findDesign(variantCode, value, criteria) {
     : matches[0];
 
   return row ? normalizeDesign(row) : null;
+}
+
+function findAllStarDesign(normalized, line) {
+  const teamKey = inferAllStarTeamKeyFromValue(normalized);
+  if (!teamKey) return null;
+
+  const rows = getRows().filter(function (candidate) {
+    if (cleanUpper(candidate.variant_code) !== "AS") return false;
+    return candidate.design_code || candidate.design_name || candidate.aliases;
+  });
+
+  const matches = rows.filter(function (candidate) {
+    return getAllStarTeamKey(candidate) === teamKey;
+  });
+
+  const row = line
+    ? matches.find(function (candidate) { return cleanUpper(candidate.liga) === line; }) || matches[0]
+    : matches[0];
+
+  return row ? normalizeDesign(row) : null;
+}
+
+function inferAllStarTeamKeyFromValue(value) {
+  const normalized = cleanUpper(value);
+  if (/\bAS-[MF]-TA\b/.test(normalized)) return "A";
+  if (/\bAS-[MF]-TB\b/.test(normalized)) return "B";
+
+  return Object.keys(ALL_STAR_TEAM_DESIGNS).find(function (teamKey) {
+    return ALL_STAR_TEAM_DESIGNS[teamKey].tokens.some(function (token) {
+      return normalized.indexOf(token) !== -1;
+    });
+  }) || "";
+}
+
+function getAllStarTeamKey(row) {
+  const source = cleanUpper([
+    row.design_code,
+    row.design_name,
+    row.file_team_name,
+    row.aliases,
+    row.mockup_file_pattern
+  ].filter(Boolean).join(" "));
+
+  if (/\bT(?:EAM)?\s*A\b/.test(source) || source.indexOf("TEAMA") !== -1 || source.indexOf("HAS1") !== -1 || source.indexOf("X001") !== -1) {
+    return "A";
+  }
+  if (/\bT(?:EAM)?\s*B\b/.test(source) || source.indexOf("TEAMB") !== -1 || source.indexOf("AAS1") !== -1 || source.indexOf("X002") !== -1) {
+    return "B";
+  }
+
+  return "";
 }
 
 function getMatchTokens(row) {
@@ -173,18 +241,23 @@ function getMockupFileTokens(value) {
 function normalizeDesign(row) {
   const variantCode = cleanUpper(row.variant_code);
   const designCode = cleanUpper(row.design_code);
+  const allStarTeamKey = variantCode === "AS" ? getAllStarTeamKey(row) : "";
+  const allStarDesign = allStarTeamKey ? ALL_STAR_TEAM_DESIGNS[allStarTeamKey] : null;
+  const mockupFile = allStarDesign
+    ? `${cleanUpper(row.liga) || "PLL"} All Star Game ${allStarDesign.mockupSide}.pdf`
+    : clean(row.mockup_file_pattern);
 
   return {
     variantCode,
     variantName: clean(row.variant_name),
     code: designCode,
-    designName: clean(row.design_name || row.file_team_name || row.design_code),
-    outputName: clean(row.design_name || row.file_team_name || row.design_code),
+    designName: allStarDesign ? allStarDesign.designName : clean(row.design_name || row.file_team_name || row.design_code),
+    outputName: allStarDesign ? allStarDesign.outputName : clean(row.design_name || row.file_team_name || row.design_code),
     mockupFolder: clean(row.mockup_folder),
-    mockupFile: clean(row.mockup_file_pattern),
+    mockupFile,
     mockupSourceType: cleanUpper(row.mockup_source_type),
     mockupStatus: clean(row.mockup_status),
-    aliases: splitAliases(row.aliases)
+    aliases: allStarDesign ? allStarDesign.aliases.slice() : splitAliases(row.aliases)
   };
 }
 
