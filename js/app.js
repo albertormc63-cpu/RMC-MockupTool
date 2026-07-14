@@ -4,8 +4,10 @@
   const filters = document.getElementById("filters");
   const styleOptions = document.getElementById("styleOptions");
   const sizeOptions = document.getElementById("sizeOptions");
+  const variantOptions = document.getElementById("variantOptions");
   const allStyles = document.getElementById("allStyles");
   const allSizes = document.getElementById("allSizes");
+  const allVariants = document.getElementById("allVariants");
   const terminal = document.getElementById("terminal");
   const btnClearLog = document.getElementById("btnClearLog");
   const button = document.getElementById("submit");
@@ -20,6 +22,7 @@
   const summaryRows = document.getElementById("summaryRows");
   const summaryStyles = document.getElementById("summaryStyles");
   const summarySizes = document.getElementById("summarySizes");
+  const summaryVariants = document.getElementById("summaryVariants");
   const maxLogLines = 180;
 
   const runtime = createRuntime();
@@ -80,6 +83,7 @@
   function bindEvents() {
     allStyles.addEventListener("change", () => toggleGroup("style", allStyles.checked));
     allSizes.addEventListener("change", () => toggleGroup("size", allSizes.checked));
+    allVariants.addEventListener("change", () => toggleGroup("variant", allVariants.checked));
 
     modeInputs.forEach((input) => {
       input.addEventListener("change", () => {
@@ -91,7 +95,9 @@
     styleOptions.addEventListener("change", () => {
       syncAllCheckbox("style", allStyles);
       allSizes.checked = true;
+      allVariants.checked = true;
       refreshSizeOptions();
+      refreshVariantOptions();
       markValidationStale();
       updateFilters();
     });
@@ -99,6 +105,13 @@
     sizeOptions.addEventListener("change", () => {
       markValidationStale();
       syncAllCheckbox("size", allSizes);
+      allVariants.checked = true;
+      refreshVariantOptions();
+    });
+
+    variantOptions.addEventListener("change", () => {
+      markValidationStale();
+      syncAllCheckbox("variant", allVariants);
     });
     resetUiButton.addEventListener("click", resetUi);
     validateIncrementalButton.addEventListener("click", validateIncrementalFromButton);
@@ -228,7 +241,9 @@
       renderOptions(styleOptions, "style", excelSummary.styles || []);
       allStyles.checked = true;
       allSizes.checked = true;
+      allVariants.checked = true;
       refreshSizeOptions();
+      refreshVariantOptions();
       updateFilters();
       filters.hidden = false;
       updateSummary();
@@ -238,6 +253,7 @@
         "Seccion: " + getModeLabel(),
         "Filas detectadas: " + excelSummary.rows,
         "Familias: " + (excelSummary.styles || []).join(", "),
+        "Variantes: " + (excelSummary.variants || []).join(", "),
         getSelectedMode() === "samples"
           ? "Equipos: " + (excelSummary.teams || []).join(", ")
           : "Tallas: " + (excelSummary.sizes || []).join(", ")
@@ -254,6 +270,7 @@
     excelSummary = null;
     allStyles.checked = true;
     allSizes.checked = true;
+    allVariants.checked = true;
     resetFilterUi();
     syncCheckVisuals();
     setLog("Seccion: " + getModeLabel() + ".\nSelecciona el Excel correspondiente.");
@@ -264,6 +281,7 @@
     filters.hidden = true;
     styleOptions.innerHTML = "";
     sizeOptions.innerHTML = "";
+    variantOptions.innerHTML = "";
     syncCheckVisuals();
   }
 
@@ -286,7 +304,13 @@
 
     if (group === "style") {
       allSizes.checked = true;
+      allVariants.checked = true;
       refreshSizeOptions();
+    }
+
+    if (group === "size") {
+      allVariants.checked = true;
+      refreshVariantOptions();
     }
 
     syncCheckVisuals();
@@ -303,7 +327,8 @@
   function updateFilters() {
     const selectedFilters = {
       styles: allStyles.checked ? [] : collectChecked("style"),
-      sizes: getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size")
+      sizes: getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size"),
+      variants: allVariants.checked ? [] : collectChecked("variant")
     };
 
     updateSummary({ filters: selectedFilters });
@@ -337,6 +362,32 @@
     toggleGroup("size", allSizes.checked);
   }
 
+  function refreshVariantOptions() {
+    if (!excelSummary) {
+      renderOptions(variantOptions, "variant", []);
+      return;
+    }
+
+    const selectedFamilies = allStyles.checked ? (excelSummary.styles || []) : collectChecked("style");
+    const selectedSizes = getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size");
+    const variantsByStyle = excelSummary.variantsByStyle || {};
+    const variantsByStyleSize = excelSummary.variantsByStyleSize || {};
+    let availableVariants = [];
+
+    selectedFamilies.forEach((family) => {
+      if (selectedSizes.length) {
+        selectedSizes.forEach((size) => {
+          availableVariants = availableVariants.concat(variantsByStyleSize[family + "||" + size] || []);
+        });
+      } else {
+        availableVariants = availableVariants.concat(variantsByStyle[family] || []);
+      }
+    });
+
+    renderOptions(variantOptions, "variant", uniqueValues(availableVariants));
+    toggleGroup("variant", allVariants.checked);
+  }
+
   function resetUi() {
     markValidationStale();
     excelPathInput.value = "";
@@ -344,6 +395,7 @@
     resetFilterUi();
     allStyles.checked = true;
     allSizes.checked = true;
+    allVariants.checked = true;
     syncCheckVisuals();
     setLog("Selecciona un Excel para revisar datos.");
     updateSummary({ rows: "0" });
@@ -404,6 +456,7 @@
         result.itemsRecorded != null ? "Items registrados: " + result.itemsRecorded : "",
         "Styles procesados: " + (result.styles || []).join(", "),
         getSelectedMode() === "samples" ? "" : "Tallas procesadas: " + (result.sizes || []).join(", "),
+        "Variantes procesadas: " + (result.variants || []).join(", "),
         "Disenador: " + (result.designer || ""),
         "Salida: " + runtime.path.resolve(document.getElementById("out").value),
         result.historyDb ? "Registro BD: " + result.historyDb : "",
@@ -525,6 +578,7 @@
       signaturesDir: document.getElementById("signaturesDir").value,
       styles: selectedFilters.styles,
       sizes: selectedFilters.sizes,
+      variants: selectedFilters.variants,
       printOrder: "stack",
       limit: 0
     };
@@ -580,7 +634,8 @@
       out: document.getElementById("out").value,
       mode: getSelectedMode(),
       styles: selectedFilters.styles || [],
-      sizes: selectedFilters.sizes || []
+      sizes: selectedFilters.sizes || [],
+      variants: selectedFilters.variants || []
     });
   }
 
@@ -602,6 +657,7 @@
       "PENDIENTES DE IMPRESION: " + result.pendientesImpresion,
       "Styles: " + (result.styles || []).join(", "),
       getSelectedMode() === "samples" ? "" : "Tallas: " + (result.sizes || []).join(", "),
+      "Variantes: " + (result.variants || []).join(", "),
       "Salida: " + result.out,
       "",
       "Primeros estados:",
@@ -655,6 +711,7 @@
       "Duplicados detectados: " + result.duplicates,
       "Styles: " + (result.styles || []).join(", "),
       getSelectedMode() === "samples" ? "" : "Tallas: " + (result.sizes || []).join(", "),
+      "Variantes: " + (result.variants || []).join(", "),
       "Salida: " + result.out,
       "",
       "Primeros en cola:",
@@ -724,6 +781,10 @@
     if (getSelectedMode() !== "samples" && !allSizes.checked && (!selectedFilters.sizes || selectedFilters.sizes.length === 0)) {
       throw new Error("Selecciona al menos una talla o marca Todas.");
     }
+
+    if (!allVariants.checked && (!selectedFilters.variants || selectedFilters.variants.length === 0)) {
+      throw new Error("Selecciona al menos una variante o marca Todas.");
+    }
   }
 
   function syncModeTabs() {
@@ -747,7 +808,8 @@
     const values = overrides || {};
     const filtersValue = values.filters || {
       styles: allStyles.checked ? [] : collectChecked("style"),
-      sizes: getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size")
+      sizes: getSelectedMode() === "samples" || allSizes.checked ? [] : collectChecked("size"),
+      variants: allVariants.checked ? [] : collectChecked("variant")
     };
     const rowValue = values.rows != null
       ? values.rows
@@ -759,6 +821,7 @@
     summaryRows.textContent = String(rowValue);
     summaryStyles.textContent = allStyles.checked ? "Todos" : getCountLabel(filtersValue.styles, "style");
     summarySizes.textContent = getSelectedMode() === "samples" ? "No aplica" : allSizes.checked ? "Todas" : getCountLabel(filtersValue.sizes, "talla");
+    summaryVariants.textContent = allVariants.checked ? "Todas" : getCountLabel(filtersValue.variants, "variante");
   }
 
   function getCountLabel(values, singular) {

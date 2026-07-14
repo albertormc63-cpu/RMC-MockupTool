@@ -8,18 +8,18 @@ const STANDARD_GENERIC_CODE = "ST";
 const GENERIC_EXCEL_EXCLUDED_CODES = ["A", "H"];
 const ALL_STAR_TEAM_DESIGNS = {
   A: {
-    designName: "Home / West",
-    outputName: "Home West",
+    designName: "Home / East",
+    outputName: "Home East",
     mockupSide: "Home",
-    aliases: ["Home", "West", "TeamA", "Team A", "X001", "HAS1"],
-    tokens: ["TEAM A", "TEAMA", "X001", "HAS1", "HOME", "WEST"]
+    aliases: ["Home", "East", "TeamA", "Team A", "X001", "HAS1"],
+    tokens: ["TEAM A", "TEAMA", "X001", "HAS1", "HOME", "EAST"]
   },
   B: {
-    designName: "Away / East",
-    outputName: "Away East",
+    designName: "Away / West",
+    outputName: "Away West",
     mockupSide: "Away",
-    aliases: ["Away", "East", "TeamB", "Team B", "X002", "AAS1"],
-    tokens: ["TEAM B", "TEAMB", "X002", "AAS1", "AWAY", "EAST"]
+    aliases: ["Away", "West", "TeamB", "Team B", "X002", "AAS1"],
+    tokens: ["TEAM B", "TEAMB", "X002", "AAS1", "AWAY", "WEST"]
   }
 };
 
@@ -128,6 +128,17 @@ function getGenericExcelCodes() {
   codes.push(STANDARD_GENERIC_CODE);
 
   return Array.from(new Set(codes)).sort();
+}
+
+function getVariantDisplayName(variantCode) {
+  const code = cleanUpper(variantCode);
+  if (!code || GENERIC_EXCEL_EXCLUDED_CODES.indexOf(code) !== -1) return "";
+
+  const row = getRows().find(function (candidate) {
+    return cleanUpper(candidate.variant_code) === code && clean(candidate.variant_name);
+  });
+
+  return row ? clean(row.variant_name) : code;
 }
 
 function findDesign(variantCode, value, criteria) {
@@ -289,5 +300,6 @@ module.exports = {
   buildDesignMockupPath,
   findDesign,
   getGenericExcelCodes,
+  getVariantDisplayName,
   __setRowsForTesting
 };

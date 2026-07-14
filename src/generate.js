@@ -280,7 +280,10 @@ function summarizeExcel(excel) {
     teams: uniqueSorted(excel.rows.map(function (row) {
       return row.teamInfo ? `${row.line} ${row.teamInfo.team} ${row.teamInfo.nickname}` : "";
     })),
-    sizesByStyle: buildSizesByStyle(excel.rows)
+    variants: uniqueSorted(excel.rows.map(getVariantFilterValue)),
+    sizesByStyle: buildSizesByStyle(excel.rows),
+    variantsByStyle: buildVariantsByStyle(excel.rows),
+    variantsByStyleSize: buildVariantsByStyleSize(excel.rows)
   };
 }
 
@@ -303,6 +306,45 @@ function buildSizesByStyle(rows) {
   });
 
   return sizesByStyle;
+}
+
+function buildVariantsByStyle(rows) {
+  const variantsByStyle = {};
+
+  rows.forEach(function (row) {
+    const family = getStyleFamily(row.style);
+    const variant = getVariantFilterValue(row);
+    if (!family || family === "SIN_STYLE" || !variant) return;
+    if (!variantsByStyle[family]) variantsByStyle[family] = [];
+    variantsByStyle[family].push(variant);
+  });
+
+  Object.keys(variantsByStyle).forEach(function (family) {
+    variantsByStyle[family] = uniqueSorted(variantsByStyle[family]);
+  });
+
+  return variantsByStyle;
+}
+
+function buildVariantsByStyleSize(rows) {
+  const variantsByStyleSize = {};
+
+  rows.forEach(function (row) {
+    const family = getStyleFamily(row.style);
+    const size = cleanUpper(row.size);
+    const variant = getVariantFilterValue(row);
+    if (!family || family === "SIN_STYLE" || !variant) return;
+
+    const key = [family, size].join("||");
+    if (!variantsByStyleSize[key]) variantsByStyleSize[key] = [];
+    variantsByStyleSize[key].push(variant);
+  });
+
+  Object.keys(variantsByStyleSize).forEach(function (key) {
+    variantsByStyleSize[key] = uniqueSorted(variantsByStyleSize[key]);
+  });
+
+  return variantsByStyleSize;
 }
 
 function readExcel(excelPath, mode) {
@@ -548,6 +590,14 @@ function getVariantLabel(order) {
   }
 
   return variant;
+}
+
+function getVariantFilterValue(order) {
+  const variant = cleanUpper(order && order.variant);
+  if (!variant) return "";
+  if (variant === "STANDARD") return "Standard";
+
+  return variantCatalog.getVariantDisplayName(variant) || variant;
 }
 
 function getJrChampionshipInfo(order) {
@@ -1013,6 +1063,10 @@ function buildSelectedJob(options) {
 
 function validateMockups(options) {
   const job = buildSelectedJob(options);
+  return validateSelectedJob(job, options);
+}
+
+function validateSelectedJob(job, options) {
   const items = job.rows.map(function (order, index) {
     return buildValidationItem(job, order, index);
   });
@@ -1084,7 +1138,8 @@ function validateMockups(options) {
     pendientesImpresion,
     items,
     styles: uniqueSorted(job.rows.map(function (row) { return getStyleFamily(row.style); })),
-    sizes: uniqueSorted(job.rows.map(function (row) { return row.size; }))
+    sizes: uniqueSorted(job.rows.map(function (row) { return row.size; })),
+    variants: uniqueSorted(job.rows.map(getVariantFilterValue))
   };
 }
 
@@ -1188,7 +1243,7 @@ async function generateMockups(options) {
   const rows = job.rows;
   const sectionName = job.sectionName;
   const outputRoot = job.outputRoot;
-  const validation = validateMockups(options);
+  const validation = validateSelectedJob(job, options);
   const validationByClave = validation.items.reduce(function (index, item) {
     index[item.clave] = item;
     return index;
@@ -1237,6 +1292,7 @@ async function generateMockups(options) {
         mockupPath
       });
       console.warn(`Mockup faltante fila ${order.sourceRow}: ${order.style} | ${order.color} | ${mockupPath || "sin ruta"}`);
+      await yieldToEventLoop();
       continue;
     }
 
@@ -1244,6 +1300,7 @@ async function generateMockups(options) {
 
     if (fs.existsSync(outputPath)) {
       console.warn(`Archivo ya existe antes de generar: ${outputPath}`);
+      await yieldToEventLoop();
       continue;
     }
 
@@ -1265,6 +1322,7 @@ async function generateMockups(options) {
       error: ""
     }));
     console.log(`OK fila ${order.sourceRow}: ${outputPath}`);
+    await yieldToEventLoop();
   }
 
   console.log(`Terminado. OK: ${ok} | Faltantes: ${missing}`);
@@ -1291,7 +1349,8 @@ async function generateMockups(options) {
     totalRows: excel.rows.length,
     validation,
     styles: uniqueSorted(rows.map(function (row) { return getStyleFamily(row.style); })),
-    sizes: uniqueSorted(rows.map(function (row) { return row.size; }))
+    sizes: uniqueSorted(rows.map(function (row) { return row.size; })),
+    variants: uniqueSorted(rows.map(getVariantFilterValue))
   };
 
   try {
@@ -1442,15 +1501,24 @@ function normalizeQty(value) {
   return Number.isFinite(number) && number > 0 ? number : 1;
 }
 
+function yieldToEventLoop() {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, 0);
+  });
+}
+
 function filterRows(rows, options) {
   const selectedStyles = new Set((options.styles || []).map(cleanUpper).filter(Boolean));
   const selectedSizes = new Set((options.sizes || []).map(cleanUpper).filter(Boolean));
+  const selectedVariants = new Set((options.variants || []).map(cleanUpper).filter(Boolean));
 
   return rows.filter(function (row) {
     const rowFamily = getStyleFamily(row.style);
+    const rowVariant = cleanUpper(getVariantFilterValue(row));
     const matchesStyle = selectedStyles.size === 0 || selectedStyles.has(rowFamily) || selectedStyles.has(row.style);
     const matchesSize = selectedSizes.size === 0 || selectedSizes.has(row.size);
-    return matchesStyle && matchesSize;
+    const matchesVariant = selectedVariants.size === 0 || selectedVariants.has(rowVariant);
+    return matchesStyle && matchesSize && matchesVariant;
   });
 }
 
@@ -1551,7 +1619,8 @@ function preparePrintQueue(options) {
     missingRows,
     duplicateRows,
     styles: uniqueSorted(job.rows.map(function (row) { return getStyleFamily(row.style); })),
-    sizes: uniqueSorted(job.rows.map(function (row) { return row.size; }))
+    sizes: uniqueSorted(job.rows.map(function (row) { return row.size; })),
+    variants: uniqueSorted(job.rows.map(getVariantFilterValue))
   };
 }
 
