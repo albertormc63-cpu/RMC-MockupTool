@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { MODE_BULK, selectJobRows } = require("../src/generate");
+const { MODE_BULK, formatBulkSizeValue, getBulkQtyX, parseLpRequestId, selectJobRows } = require("../src/generate");
 
 const shared = {
   shipOrder: "5484880",
@@ -31,5 +31,17 @@ assert.strictEqual(selection.consolidatedRows.length, 1, "El pedido multitalle d
 assert.strictEqual(selection.consolidatedRows[0].size, "2XL-XLG");
 assert.strictEqual(selection.consolidatedRows[0].qty, 2);
 assert.deepStrictEqual(selection.consolidatedRows[0].sourceRows, [7, 16]);
+assert.strictEqual(
+  formatBulkSizeValue({ size: "2XL-XLG-LGE-MED-SML", sizes: ["2XL", "XLG", "LGE", "MED", "SML"] }),
+  "2XL-XLG-LGE\nMED-SML",
+  "La anotacion debe partir multitalle despues de la tercera talla."
+);
+assert.strictEqual(getBulkQtyX({ qty: 9 }), 0.80, "Una cantidad de un digito conserva la posicion normal.");
+assert.strictEqual(getBulkQtyX({ qty: 10 }), 0.58, "Una cantidad de dos digitos se alinea con el WO.");
+assert.strictEqual(
+  parseLpRequestId("request id is Zebra_RMC-123 (1 file(s))"),
+  "Zebra_RMC-123",
+  "La impresion debe conservar el job id que devuelve CUPS."
+);
 
 console.log("consolidation.test.js OK");

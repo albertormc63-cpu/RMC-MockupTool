@@ -41,7 +41,11 @@ const STATE_RECORD_WITHOUT_FILE = "REGISTRADO_SIN_ARCHIVO";
 const STATE_CONFLICT = "CONFLICTO";
 const DESIGNERS = ["F-ALBERTO", "F-THANIA", "F-ANTONIO"];
 const SIGNATURE_WIDTH = 1.20;
+const BULK_TEXT_X = 0.58;
 const BULK_SIGNATURE_POSITION = { x: 0.75, y: 2.05 };
+const BULK_QTY_X = 0.80;
+const BULK_SIZE_WRAP_COUNT = 3;
+const BULK_SIZE_LINE_HEIGHT = 0.26;
 const SAMPLES_SIGNATURE_POSITION = { x: 2.50, y: 1.88 };
 const SAMPLES_TEXT_POSITION = {
   date: { x: 0.58, y: 7.38 },
@@ -708,21 +712,21 @@ async function annotatePdf({ mockupPath, outputPath, order, dateText, fontPath, 
   const boldFont = font;
 
   drawText(page, `WO# ${order.wo}`.toUpperCase(), {
-    x: 0.58,
+    x: BULK_TEXT_X,
     y: 7.10,
     size: 18,
     font: boldFont
   });
 
   drawText(page, order.style.toUpperCase(), {
-    x: 0.58,
+    x: BULK_TEXT_X,
     y: 6.78,
     size: 18,
     font: boldFont
   });
 
   drawText(page, dateText.toUpperCase(), {
-    x: 0.58,
+    x: BULK_TEXT_X,
     y: 7.38,
     size: 12,
     font,
@@ -730,17 +734,18 @@ async function annotatePdf({ mockupPath, outputPath, order, dateText, fontPath, 
   });
 
   drawQty(page, String(order.qty || 1), {
-    x: 0.80,
+    x: getBulkQtyX(order),
     y: 4.04,
     numberFont: boldFont,
     suffixFont: font
   });
 
-  drawText(page, `Size: ${order.size}`.toUpperCase(), {
+  drawMultilineText(page, getBulkSizeText(order).toUpperCase(), {
     x: getSizeTextX(order),
     y: 2.50,
     size: 18,
-    font: boldFont
+    font: boldFont,
+    lineHeight: BULK_SIZE_LINE_HEIGHT
   });
 
   await drawSignature(pdf, page, signaturePath, BULK_SIGNATURE_POSITION);
@@ -820,6 +825,44 @@ function getSizeTextX(order) {
   return order.sizes.length > 2 ? 1.55 : 1.80;
 }
 
+function getBulkQtyX(order) {
+  return getQtyDigitCount(order && order.qty) >= 2 ? BULK_TEXT_X : BULK_QTY_X;
+}
+
+function getQtyDigitCount(value) {
+  return clean(value || 1).replace(/\D/g, "").length;
+}
+
+function getBulkSizeText(order) {
+  return `Size: ${formatBulkSizeValue(order)}`;
+}
+
+function formatBulkSizeValue(order) {
+  const sizes = getOrderSizeParts(order);
+
+  if (sizes.length <= BULK_SIZE_WRAP_COUNT) {
+    return clean(order.size) || sizes.join("-");
+  }
+
+  const lines = [];
+  for (let index = 0; index < sizes.length; index += BULK_SIZE_WRAP_COUNT) {
+    lines.push(sizes.slice(index, index + BULK_SIZE_WRAP_COUNT).join("-"));
+  }
+
+  return lines.join("\n");
+}
+
+function getOrderSizeParts(order) {
+  if (order && Array.isArray(order.sizes) && order.sizes.length) {
+    return order.sizes.map(clean).filter(Boolean);
+  }
+
+  return clean(order && order.size)
+    .split("-")
+    .map(clean)
+    .filter(Boolean);
+}
+
 async function loadPreferredFont(pdf, fontPath) {
   if (fontkit && fontPath && fs.existsSync(fontPath)) {
     pdf.registerFontkit(fontkit);
@@ -894,6 +937,14 @@ function drawText(page, text, options) {
     size: options.size,
     font: options.font,
     color: options.color || FONT_COLOR
+  });
+}
+
+function drawMultilineText(page, text, options) {
+  String(text || "").split("\n").forEach(function (line, index) {
+    drawText(page, line, Object.assign({}, options, {
+      y: options.y - (index * (options.lineHeight || 0.25))
+    }));
   });
 }
 
@@ -1657,12 +1708,18 @@ function submitPrintQueue(options) {
   itemsToPrint.forEach(function (item) {
     const args = buildLpArgs(printer, printOptions, item.path);
     const result = childProcess.spawnSync("lp", args, { encoding: "utf8" });
+    const stdout = clean(result.stdout);
+    const jobId = parseLpRequestId(stdout);
 
-    if (result.status === 0) {
+    if (result.status === 0 && jobId) {
       printed.push({
         path: item.path,
         clave: item.clave,
-        stdout: clean(result.stdout)
+        key: item.key,
+        size: item.size,
+        jobId,
+        title: path.basename(item.path),
+        stdout
       });
       return;
     }
@@ -1670,7 +1727,7 @@ function submitPrintQueue(options) {
     failed.push({
       path: item.path,
       status: result.status,
-      error: clean(result.stderr || result.error && result.error.message || result.stdout)
+      error: clean(result.stderr || result.error && result.error.message || stdout || "lp no devolvio job id.")
     });
   });
 
@@ -1731,8 +1788,14 @@ function buildLpArgs(printer, printOptions, filePath) {
     args.push("-o", option);
   });
 
+  args.push("-t", path.basename(filePath));
   args.push(filePath);
   return args;
+}
+
+function parseLpRequestId(stdout) {
+  const match = clean(stdout).match(/([A-Za-z0-9_.-]+-\d+)\b/);
+  return match ? match[1] : "";
 }
 
 function indexOutputPdfFiles(outputRoot) {
@@ -1863,6 +1926,9 @@ module.exports = {
   buildOutputPath,
   buildSamplesOutputPath,
   getJobOutputRoot,
+  formatBulkSizeValue,
+  getBulkQtyX,
+  parseLpRequestId,
   selectJobRows,
   generateMockups,
   validateMockups,

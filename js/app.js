@@ -724,7 +724,10 @@
       ...(result.duplicateRows || []).slice(0, 10).map(formatDuplicatePrintItem),
       result.failedRows && result.failedRows.length ? "" : "",
       result.failedRows && result.failedRows.length ? "Errores:" : "",
-      ...(result.failedRows || []).slice(0, 10).map((row) => row.path + " | " + row.error)
+      ...(result.failedRows || []).slice(0, 10).map((row) => row.path + " | " + row.error),
+      result.printed && result.printed.length ? "" : "",
+      result.printed && result.printed.length ? "Primeros jobs CUPS aceptados:" : "",
+      ...(result.printed || []).slice(0, 20).map(formatPrintedJob)
     ].filter(Boolean).join("\n");
   }
 
@@ -750,6 +753,15 @@
       row.variantLabel || "",
       row.size || "SIN TALLA",
       row.expectedPath
+    ].join(" | ");
+  }
+
+  function formatPrintedJob(row) {
+    return [
+      row.jobId || "SIN JOB ID",
+      row.key || "SIN CLAVE",
+      row.size || "SIN TALLA",
+      row.title || row.path || ""
     ].join(" | ");
   }
 
